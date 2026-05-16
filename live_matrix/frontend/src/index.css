@@ -1,0 +1,178 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
+
+:root {
+  --bg-color: #000000;
+  --bg-panel: #0a0a0c;
+  --text-primary: #00ff00; /* Terminal Green */
+  --text-secondary: #008800;
+  --text-alert: #ff0000;
+  --border-color: #00ff00;
+  --border-dim: #003300;
+  
+  --agent-dev: #00ffff;
+  --agent-reviewer: #ff0055;
+  --agent-orchestrator: #ffbb00;
+  --agent-media: #bbbbbb;
+  --agent-academy: #00ffaa;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body { 
+  background-color: var(--bg-color); 
+  color: var(--text-primary); 
+  font-family: 'JetBrains Mono', monospace; 
+  overflow: hidden; 
+  text-transform: uppercase;
+}
+
+/* Hardcore Grid Background */
+.dashboard-container { 
+  display: flex; 
+  height: 100vh; 
+  width: 100vw; 
+  background-image: 
+    linear-gradient(var(--border-dim) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-dim) 1px, transparent 1px);
+  background-size: 40px 40px;
+  position: relative;
+}
+
+/* Security Overlays */
+.security-banner {
+  position: absolute;
+  top: 10px; right: 20px;
+  font-size: 10px;
+  color: var(--text-alert);
+  text-align: right;
+  z-index: 100;
+  pointer-events: none;
+}
+.security-banner span { display: block; }
+.blink { animation: blinker 1s linear infinite; }
+@keyframes blinker { 50% { opacity: 0; } }
+
+/* Sidebar HUD - War Room Style */
+.sidebar {
+  width: 380px; height: 100%; 
+  border-right: 1px solid var(--border-color);
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(5px);
+  display: flex; flex-direction: column;
+}
+
+.brand-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex; flex-direction: column; gap: 5px;
+}
+.brand-title { 
+  font-size: 1.5rem; font-weight: 800; letter-spacing: 0.1em; color: #fff; 
+}
+.brand-subtitle { font-size: 0.7rem; color: var(--text-secondary); }
+
+.metrics-section {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  border-bottom: 1px dashed var(--border-dim);
+}
+
+.metric-card { 
+  border: 1px solid var(--border-dim); 
+  padding: 10px;
+  background: var(--bg-panel);
+}
+.metric-card.alert { border-color: var(--text-alert); }
+
+.metric-label { font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 5px; display: block; }
+.metric-value { font-size: 1.5rem; font-weight: 700; }
+.metric-unit { font-size: 0.7rem; color: var(--text-secondary); }
+
+/* Tulpar Core Section */
+.tulpar-core {
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+.core-title { font-size: 0.9rem; margin-bottom: 15px; color: #fff; display: flex; justify-content: space-between; }
+
+.progress-bar-container { width: 100%; height: 8px; background: var(--border-dim); margin-top: 5px; position: relative; }
+.progress-bar-fill { height: 100%; background: var(--text-primary); transition: width 0.3s; }
+.progress-bar-fill.high { background: var(--text-alert); }
+
+/* Terminal Logs */
+.terminal-section {
+  flex: 1; padding: 20px; overflow-y: auto;
+  background: #000;
+  font-size: 0.75rem;
+  color: #fff;
+}
+.log-line { margin-bottom: 4px; line-height: 1.4; word-break: break-all; }
+.log-time { color: var(--text-secondary); margin-right: 10px; }
+.log-info { color: var(--text-primary); }
+.log-error { color: var(--text-alert); font-weight: bold; background: rgba(255,0,0,0.2); padding: 2px 4px; border: 1px solid var(--text-alert); display: inline-block; animation: blinker 1s linear infinite; }
+.log-warn { color: var(--agent-orchestrator); }
+
+/* Main Network Topology Area */
+.map-area {
+  flex: 1; position: relative; display: flex; justify-content: center; align-items: center;
+}
+
+/* Agent Nodes (Data Grid) */
+.agent-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 220px;
+  border: 1px solid var(--node-color, var(--text-primary));
+  background: rgba(0,0,0,0.9);
+  display: flex; flex-direction: column;
+  box-shadow: 0 0 15px rgba(0,0,0,0.5);
+  z-index: 10;
+}
+
+.agent-node.inactive { border-color: var(--border-dim); opacity: 0.7; }
+.agent-node.inactive .node-header { background: var(--border-dim); color: #888; }
+
+.node-header {
+  padding: 8px;
+  background: var(--node-color, var(--text-primary));
+  color: #000;
+  font-weight: 800;
+  font-size: 0.8rem;
+  display: flex; justify-content: space-between;
+}
+
+.node-body {
+  padding: 10px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.node-metric { display: flex; justify-content: space-between; font-size: 0.7rem; }
+.node-state { 
+  font-size: 0.7rem; color: #fff; padding: 4px; background: #111; 
+  border: 1px dotted var(--node-color, var(--text-primary));
+}
+
+/* Connection Lines (SVG) */
+.topology-svg {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none;
+}
+.data-flow-line {
+  fill: none;
+  stroke: var(--border-dim);
+  stroke-width: 2;
+}
+.data-flow-active {
+  stroke: var(--text-primary);
+  stroke-dasharray: 5, 5;
+  animation: flow 20s linear infinite;
+}
+
+@keyframes flow {
+  to { stroke-dashoffset: -1000; }
+}
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: var(--border-dim); }

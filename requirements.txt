@@ -1,0 +1,15 @@
+pika
+psutil
+streamlit
+streamlit-echarts
+requests
+redis
+pylint
+flake8
+duckduckgo-search
+python-telegram-bot>=21.0
+gitpython
+mcp
+tiktoken
+google-generativeai
+flask

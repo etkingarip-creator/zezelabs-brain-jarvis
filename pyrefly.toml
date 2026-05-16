@@ -1,0 +1,18 @@
+[pyrefly]
+# Bu proje Docker (Python 3.11) icinde calisir.
+# Yerel Python 3.14 ortaminda yuklu olmayan paketler icin
+# hatalari bastir.
+ignore_missing_imports = true
+
+# Sadece proje dosyalarini analiz et
+analyze_paths = [
+    "backend",
+    "core",
+    "zeze_eng",
+    "zeze_media",
+    "zeze_academy",
+    "zeze_fin",
+    "zeze_aro",
+    "zeze_telegram"
+]
+exclude_paths = ["Clawde_Code", "node_modules", "venv", ".git"]

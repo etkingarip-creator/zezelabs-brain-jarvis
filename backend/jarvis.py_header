@@ -1,0 +1,57 @@
+import asyncio
+import io
+import json
+import re
+import logging
+import os
+import sys
+import tempfile
+import time
+import threading
+import subprocess
+try:
+    import psutil
+except ImportError:
+    psutil = None
+from contextlib import asynccontextmanager
+
+# 1. LOGGING SETUP (EN TEPE)
+logging.basicConfig(
+    level=logging.INFO, 
+    format="%(asctime)s [%(name)s] %(message)s",
+    handlers=[
+        logging.FileHandler("jarvis_intelligence.log", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+log = logging.getLogger("jarvis")
+
+# 2. INTELLIGENCE IMPORTS (GEMINI/LOCAL)
+try:
+    import google.generativeai as genai
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
+
+from dotenv import load_dotenv
+load_dotenv()
+
+if HAS_GENAI:
+    _api_key = os.getenv("GEMINI_API_KEY")
+    if _api_key:
+        genai.configure(api_key=_api_key)
+    else:
+        HAS_GENAI = False
+
+# 3. SYSTEM PATHS & TOOLS
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _root not in sys.path: sys.path.insert(0, _root)
+
+from standalone_jarvis.backend.QueryEngine import QueryEngine
+from standalone_jarvis.backend.tools import BashTool, FileEditTool, FileReadTool
+
+# SETTINGS
+SAMPLE_RATE   = 16000
+CHUNK_SIZE    = 512 
+
+# --- REST OF THE CODE FOLLOWS ---

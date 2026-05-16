@@ -1,0 +1,12 @@
+# Docker Build Context İyileştirmesi
+**/node_modules
+**/__pycache__
+**/.git
+**/.venv
+dev_workspace/
+zeze_eng/dev_workspace/
+live_matrix/frontend/node_modules
+Clawde_Code/node_modules
+*.log
+*.pyc
+.env

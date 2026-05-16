@@ -1,0 +1,610 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: zezelabs_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - zezelabs_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: zezelabs_redis
+    command: redis-server --requirepass tulpar2026
+    networks:
+      - zezelabs_network
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: zezelabs_chroma
+    ports:
+      - "8000:8000"
+    networks:
+      - zezelabs_network
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: zezelabs_n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+    depends_on:
+      - rabbitmq
+    networks:
+      - zezelabs_network
+
+  # 🏛️ DEPARTMANLAR ══════════════════════════════════════════════════════
+
+  orchestrator:
+    build: .
+    container_name: zeze_orchestrator
+    command: python -u core/orchestrator/main.py
+    environment: &base_env
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: zezelabs_chroma
+      JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
+      OPENJARVIS_ROOT: /openjarvis
+    volumes:
+      - .:/app
+      - ./openjarvis:/openjarvis
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  zezelabs_bridge:
+    build: .
+    container_name: zeze_jarvis_bridge
+    command: python -u core/jarvis_bridge_server.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+      - ./openjarvis:/openjarvis
+    ports:
+      - "7001:7000"
+    networks:
+      - zezelabs_network
+
+  # 🛠️ Zeze-Eng: Mühendislik & Ar-Ge
+  eng_architect:
+    build: .
+    container_name: zeze_eng_architect
+    command: python -u zeze_eng/architect.py
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+      JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  eng_coder:
+    build: .
+    container_name: zeze_eng_coder
+    command: python -u zeze_eng/dev_agent.py
+    restart: unless-stopped
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  eng_auditor:
+    build: .
+    container_name: zeze_eng_auditor
+    command: python -u zeze_eng/auditor.py
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  # 🎬 Zeze-Media: İçerik & Kreatif
+  media_scriptwriter:
+    build: .
+    container_name: zeze_media_scriptwriter
+    command: python -u zeze_media/scriptwriter.py
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+      JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  media_visionary:
+    build: .
+    container_name: zeze_media_visionary
+    command: python -u zeze_media/visionary.py
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+      JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  media_automation:
+    build: .
+    container_name: zeze_media_automation
+    command: python -u zeze_media/automation_agent.py
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+      N8N_WEBHOOK_URL: http://zezelabs_n8n:5678/webhook/test-trigger
+      N8N_MEDIA_WEBHOOK: http://zezelabs_n8n:5678/webhook/media-dispatch
+      N8N_GITHUB_WEBHOOK: http://zezelabs_n8n:5678/webhook/github-push
+      N8N_MYSTIC_WEBHOOK: http://zezelabs_n8n:5678/webhook/mystic-report
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  # 🎬 Zeze-Media: Content Agent (OpenJarvis skill entegrasyonu)
+  media_content_agent:
+    build: .
+    container_name: zeze_media_content
+    command: python -u zeze_media/content_agent.py
+    restart: unless-stopped
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+      JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
+      OPENJARVIS_ROOT: /openjarvis
+    volumes:
+      - .:/app
+      - ./openjarvis:/openjarvis
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  media_seo:
+    build: .
+    container_name: zeze_media_seo
+    command: python -u zeze_media/seo_agent.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  media_thumbnail:
+    build: .
+    container_name: zeze_media_thumbnail
+    command: python -u zeze_media/thumbnail_agent.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  media_video:
+    build: .
+    container_name: zeze_media_video
+    command: python -u zeze_media/video_producer.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  # 📚 Zeze-Academy: Eğitim & Araştırma
+  academy_researcher:
+    build: .
+    container_name: zeze_academy_researcher
+    command: python -u zeze_academy/researcher.py
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  academy_educator:
+    build: .
+    container_name: zeze_academy_educator
+    command: python -u zeze_academy/educator.py
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+      JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  academy_deep_research:
+    build: .
+    container_name: zeze_academy_deep_research
+    command: python -u zeze_academy/deep_research.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  # 🔮 Zeze-Mystic: Ezoterik & Sembolik
+  mystic_interpreter:
+    build: .
+    container_name: zeze_mystic_interpreter
+    command: python -u zeze_mystic/interpreter.py
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+      JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  mystic_content_packager:
+    build: .
+    container_name: zeze_mystic_content_packager
+    command: python -u zeze_mystic/content_packager.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  # 🏆 Zeze-ARO: Agent Resources & Optimization
+  aro_agent:
+    build: .
+    container_name: zeze_aro_agent
+    command: python -u zeze_aro/aro_agent.py
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  aro_lead_scout:
+    build: .
+    container_name: zeze_aro_lead_scout
+    command: python -u zeze_aro/lead_scout.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  aro_metrics:
+    build: .
+    container_name: zeze_aro_metrics
+    command: python -u zeze_aro/metrics_collector.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  aro_outreach:
+    build: .
+    container_name: zeze_aro_outreach
+    command: python -u zeze_aro/outreach_agent.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  aro_proposal:
+    build: .
+    container_name: zeze_aro_proposal
+    command: python -u zeze_aro/proposal_agent.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  # 📈 Zeze-Fin: Finans & Kripto
+  fin_agent:
+    build: .
+    container_name: zeze_fin_agent
+    command: python -u zeze_fin/fin_agent.py
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  fin_binance_watcher:
+    build: .
+    container_name: zeze_fin_binance_watcher
+    command: python -u zeze_fin/binance_watcher.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  fin_risk_manager:
+    build: .
+    container_name: zeze_fin_risk_manager
+    command: python -u zeze_fin/risk_manager.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  fin_signal:
+    build: .
+    container_name: zeze_fin_signal
+    command: python -u zeze_fin/signal_agent.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  # 🏛️ Zeze-Telegram: Komuta Merkezi
+  telegram_bot:
+    build: .
+    container_name: zeze_telegram_bot
+    command: python -u zeze_telegram/bot_agent.py
+    environment:
+      <<: *base_env
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  telegram_notifier:
+    build: .
+    container_name: zeze_telegram_notifier
+    command: python -u zeze_telegram/notifier.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  jarvis_notifier:
+    build: .
+    container_name: zeze_jarvis_notifier
+    command: python -u zeze_telegram/jarvis_notifier.py
+    restart: unless-stopped
+    environment:
+      <<: *base_env
+    volumes:
+      - .:/app
+      - ./openjarvis:/openjarvis
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  # 🧠 Core Services
+  memory_distillation:
+    build: .
+    container_name: zeze_core_memory
+    command: python -u core/memory/distillation.py
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+      REDIS_HOST: redis
+      REDIS_PASSWORD: tulpar2026
+      CHROMA_HOST: chromadb
+    volumes:
+      - .:/app
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  # 👁️ LIVE-MATRIX: War Room Telemetry & Dashboard
+  live_matrix_backend:
+    build: live_matrix/backend
+    container_name: zeze_live_matrix_ws
+    ports:
+      - "8001:8001"
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: admin123
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  live_matrix_frontend:
+    build: live_matrix/frontend
+    container_name: zeze_live_matrix_ui
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./live_matrix/frontend:/app
+      - /app/node_modules
+    networks:
+      - zezelabs_network
+
+  war_room_ui:
+    build: 
+      context: ./live_matrix/war_room
+      dockerfile: Dockerfile
+    ports:
+      - "3001:80"
+    networks:
+      - zezelabs_network
+
+networks:
+  zezelabs_network:
+    driver: bridge

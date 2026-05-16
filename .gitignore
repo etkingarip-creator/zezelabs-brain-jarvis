@@ -1,0 +1,15 @@
+
+node_modules/
+dist/
+.env
+*.log
+__pycache__/
+.DS_Store
+standalone_jarvis/frontend/node_modules/
+frontend/node_modules/
+backend/venv/
+backend/__pycache__/
+*.exe
+.git_trash_*
+OLD_GIT_BACKUP_*
+OLD_GIT_BACKUP_DO_NOT_PUSH_374/
