@@ -160,16 +160,142 @@ class Ear:
                 if self.loop: asyncio.run_coroutine_threadsafe(manager.broadcast({"type":"state","val":"idle"}), self.loop)
         except Exception as e: log.error(f"STT Error: {e}")
 
+# ── HERMES GATEWAY BACKGROUND PROCESSOR & RABBITMQ TELEMETRY BRIDGE ──
+def publish_rabbitmq_event(event_type, payload):
+    """Publishes system events & agent telemetry to RabbitMQ queue 'zom_telemetry_queue'."""
+    if HAS_RABBIT and not RABBIT_SKIP:
+        def _pub():
+            try:
+                conn = pika.BlockingConnection(pika.ConnectionParameters('localhost', connection_attempts=1))
+                ch = conn.channel()
+                ch.queue_declare(queue='zom_telemetry_queue', durable=True)
+                ch.basic_publish(
+                    exchange='',
+                    routing_key='zom_telemetry_queue',
+                    body=json.dumps({"event": event_type, "data": payload, "timestamp": time.time()})
+                )
+                conn.close()
+            except Exception as e:
+                log.error(f"RabbitMQ Telemetry Error: {e}")
+        threading.Thread(target=_pub, daemon=True).start()
+
+def trigger_github_push():
+    """Triggers the push_to_github.py script otonomously in a background thread."""
+    def _push():
+        try:
+            log.info("🚀 [PROJECT GITHUB-PUSH] GitHub'a yükleme işlemi başlatılıyor...")
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            push_script = os.path.join(base_dir, "push_to_github.py")
+            if os.path.exists(push_script):
+                sys.path.insert(0, base_dir)
+                import push_to_github
+                push_to_github.main()
+                log.info("✅ [PROJECT GITHUB-PUSH] GitHub yükleme işlemi başarıyla tamamlandı.")
+            else:
+                log.error("❌ push_to_github.py bulunamadı!")
+        except Exception as e:
+            log.error(f"❌ GitHub yükleme hatası: {e}")
+            
+    threading.Thread(target=_push, daemon=True).start()
+
+def purge_openclaw():
+    """Otonomously purges all OpenClaw directories, files, and RabbitMQ queues (ZOM-compliant)."""
+    import shutil
+    log.info("🧹 [PROJECT PURGE-AND-ROUTE] OpenClaw temizliği başlatılıyor...")
+    
+    # 1. Purge global .openclaw directory
+    openclaw_dir = os.path.expanduser("~/.openclaw")
+    if os.path.exists(openclaw_dir):
+        try:
+            shutil.rmtree(openclaw_dir)
+            log.info(f"🗑️ Global OpenClaw dizini başarıyla silindi: {openclaw_dir}")
+        except Exception as e:
+            log.error(f"❌ Global OpenClaw dizini silinemedi: {e}")
+    else:
+        log.info("ℹ️ Sistemde global OpenClaw dizini bulunamadı (zaten temiz).")
+        
+    # 2. Clean RabbitMQ Queues
+    if HAS_RABBIT and not RABBIT_SKIP:
+        try:
+            conn = pika.BlockingConnection(pika.ConnectionParameters('localhost', connection_attempts=1))
+            ch = conn.channel()
+            queues_to_purge = [
+                'openclaw_queue', 'openclaw_events', 'openclaw_telemetry', 
+                'openclaw_orchestrator', 'openclaw_main', 'openclaw_orchestrator_queue'
+            ]
+            for q in queues_to_purge:
+                try:
+                    ch.queue_delete(queue=q)
+                    log.info(f"🗑️ RabbitMQ OpenClaw kuyruğu silindi: {q}")
+                except Exception as qe:
+                    pass
+            conn.close()
+            log.info("✅ RabbitMQ OpenClaw kuyrukları temizlendi.")
+        except Exception as e:
+            log.error(f"❌ RabbitMQ OpenClaw temizlik hatası: {e}")
+
+def launch_hermes_gateway():
+    """Otonomously checks port 8642 and spawns the Hermes Gateway background process on Windows/Linux."""
+    import socket
+    import subprocess
+    import sys
+    
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        in_use = s.connect_ex(('127.0.0.1', 8642)) == 0
+        if in_use:
+            log.info("🧠 Hermes Gateway zaten çalışıyor (Port 8642 aktif).")
+            return
+            
+    log.info("🚀 Hermes Gateway arka planda başlatılıyor...")
+    try:
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        cli_path = os.path.join(base_dir, "scratch", "hermes-agent", "cli.py")
+        cmd = [sys.executable, cli_path, "gateway"]
+        
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=0x08000000 if sys.platform == "win32" else 0, # CREATE_NO_WINDOW
+            close_fds=True
+        )
+        log.info("✅ Hermes Gateway arka plan süreci başarıyla tetiklendi.")
+        publish_rabbitmq_event("hermes_gateway_started", {"status": "success", "port": 8642})
+    except Exception as e:
+        log.error(f"❌ Hermes Gateway başlatılamadı: {e}")
+        publish_rabbitmq_event("hermes_gateway_started", {"status": "failure", "error": str(e)})
+
 class Brain:
     def __init__(self):
         self.url = "http://localhost:11434"
         self.model = "qwen3.5:2b"
         self.status = "connecting"
         self.loop = None
+        # Hermes Agent API Integration
+        self.hermes_url = "http://127.0.0.1:8642/v1"
+        self.hermes_api_key = os.getenv("HERMES_API_KEY", "your-secret-key")
+        self.hermes_status = "offline"
 
     async def auto_configure(self):
+        # 1. First, check if Hermes Agent API is online
         try:
-            async with httpx.AsyncClient(timeout=3) as client:
+            async with httpx.AsyncClient(timeout=2) as client:
+                headers = {"Authorization": f"Bearer {self.hermes_api_key}"} if self.hermes_api_key else {}
+                resp = await client.get(f"{self.hermes_url}/models", headers=headers)
+                if resp.status_code == 200:
+                    self.hermes_status = "online"
+                    self.status = "online"
+                    self.model = "hermes-agent"
+                    log.info("🧠 Hermes Agent API Çevrimiçi! Jarvis'in Ana Beyni olarak ayarlandı.")
+                    await manager.broadcast({"type": "brain_status", "val": "online", "model": "hermes-agent (API)"})
+                    return True
+        except Exception as e:
+            log.info(f"ℹ️ Hermes Agent API bağlanılamadı (Çevrimdışı). Ollama/Gemini kontrol ediliyor.")
+            self.hermes_status = "offline"
+
+        # 2. Fallback to Ollama local tags
+        try:
+            async with httpx.AsyncClient(timeout=2) as client:
                 resp = await client.get(f"{self.url}/api/tags")
                 if resp.status_code == 200:
                     models = resp.json().get("models", [])
@@ -178,36 +304,118 @@ class Brain:
                         self.status = "online"
                         await manager.broadcast({"type": "brain_status", "val": "online", "model": self.model})
                         return True
-        except:
-            self.status = "offline"
-            await manager.broadcast({"type": "brain_status", "val": "offline"})
-            return False
+        except Exception as e:
+            log.warning(f"⚠️ Local Ollama da çevrimdışı: {e}")
+
+        # 3. Fallback to Cloud/offline state
+        self.status = "offline"
+        await manager.broadcast({"type": "brain_status", "val": "offline"})
+        return False
 
     async def think(self, prompt, system="", history=None, force_cloud=False):
         history = history or []
         
-        # ── ZOM DOCTRINE: LOCAL FIRST, STRATEGIC CLOUD ──
+        # ── PRIORITY 1: HERMES AGENT ──
+        await self.auto_configure()
+        if self.hermes_status == "online":
+            try:
+                # Strategic routing based on prompt type (Operational vs Strategic DeepSeek models)
+                is_strategic = self._is_strategic(prompt)
+                target_model = "deepseek/deepseek-v4-pro" if is_strategic else "deepseek/deepseek-v4-flash"
+                
+                log.info(f"🧠 İstek Hermes Agent Ana Beynine yönlendiriliyor (Model: {target_model})...")
+                
+                # Telemetry broadcast via RabbitMQ
+                publish_rabbitmq_event("hermes_telemetry_start", {
+                    "prompt": prompt,
+                    "model": target_model,
+                    "strategic": is_strategic
+                })
+                
+                response = await self._think_hermes(prompt, system, history, model_override=target_model)
+                
+                publish_rabbitmq_event("hermes_telemetry_success", {
+                    "prompt": prompt,
+                    "response": response,
+                    "model": target_model
+                })
+                
+                return response
+            except Exception as e:
+                log.error(f"❌ Hermes Agent düşünme hatası: {e}. Fallback devrede.")
+                publish_rabbitmq_event("hermes_telemetry_failure", {"error": str(e)})
+
+        # ── PRIORITY 2: ZOM DOCTRINE (LOCAL FIRST / CLOUD FALLBACK) ──
         is_strategic = self._is_strategic(prompt)
         
-        if not force_cloud and not is_strategic and self.status == "online":
+        if not force_cloud and not is_strategic and self.status == "online" and self.hermes_status == "offline":
             try:
-                # ... existing local logic ...
                 return await self._think_local(prompt, system, history)
-            except: pass
+            except Exception as e:
+                log.error(f"❌ Yerel Ollama düşünme hatası: {e}")
 
-        # ── CLOUD ONLY FOR STRATEGIC DECISIONS ──
+        # ── PRIORITY 3: CLOUD INTELLIGENCE (GEMINI) ──
         return await self._think_cloud(prompt, system, history)
 
     def _is_strategic(self, prompt: str) -> bool:
-        """Determines if a prompt requires high-level intelligence (Gemini 2.5)."""
+        """Determines if a prompt requires high-level intelligence."""
         keywords = ["mimari", "strateji", "karar", "architecture", "roadmap", "optimize", "analyze", "security"]
         return any(k in prompt.lower() for k in keywords)
 
+    async def _think_hermes(self, prompt, system, history, model_override=None):
+        headers = {
+            "Content-Type": "application/json"
+        }
+        if self.hermes_api_key:
+            headers["Authorization"] = f"Bearer {self.hermes_api_key}"
+
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        for msg in history:
+            messages.append(msg)
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model_override or "deepseek/deepseek-v4-flash",
+            "messages": messages,
+            "temperature": 0.7
+        }
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(f"{self.hermes_url}/chat/completions", json=payload, headers=headers)
+            if resp.status_code == 200:
+                result = resp.json()
+                return result["choices"][0]["message"]["content"]
+            else:
+                raise Exception(f"Hermes API Hata Döndürdü: {resp.status_code} - {resp.text}")
+
+    async def _think_local(self, prompt, system, history):
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "system": system,
+            "stream": False
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(f"{self.url}/api/generate", json=payload)
+            if resp.status_code == 200:
+                return resp.json().get("response", "")
+            else:
+                raise Exception(f"Ollama Hata: {resp.status_code}")
+
     async def _think_cloud(self, prompt, system, history):
-        if not HAS_GENAI: return "Cloud Intelligence not available."
-        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
-        # ... implementation ...
-        return f"<thinking>Strategic Cloud Logic Active.</thinking>\nResponse"
+        if not HAS_GENAI:
+            return "ZOM Bulut Zekası (Gemini) şu anda kullanılamıyor. Lütfen API anahtarını kontrol edin."
+        
+        try:
+            model = genai.GenerativeModel(model_name="gemini-2.5-flash")
+            full_prompt = f"{system}\n\nKullanıcı: {prompt}" if system else prompt
+            response = model.generate_content(full_prompt)
+            return response.text
+        except Exception as e:
+            log.error(f"❌ Gemini Düşünme Hatası: {e}")
+            return f"Bulut Zekası Hatası: {e}"
 
 
 brain = Brain()
@@ -218,6 +426,16 @@ engine = QueryEngine(brain, [BashTool(), FileEditTool(), FileReadTool()])
 async def lifespan(app: FastAPI):
     loop = asyncio.get_running_loop()
     brain.loop = loop; ear.loop = loop; ear.on_transcript = lambda t: engine_thread(t)
+    
+    # ── PURGE OPENCLAW remnants (PROJECT PURGE-AND-ROUTE) ──
+    purge_openclaw()
+    
+    # ── LAUNCH HERMES GATEWAY BACKGROUND PROCESS ──
+    launch_hermes_gateway()
+    
+    # ── OTONOMOUS GITHUB UPLOAD ──
+    trigger_github_push()
+    
     asyncio.create_task(brain.auto_configure())
     asyncio.create_task(system_stats_broadcaster()) # Start stats loop
     threading.Thread(target=ear.start, daemon=True).start()
@@ -276,6 +494,8 @@ async def handle_engine(text):
         prev_ear_state = ear.enabled; ear.enabled = False 
         await manager.broadcast({"type": "state", "val": "thinking"})
         try:
+            response = await brain.think(text)
+            if response:
                 # SECURITY GUARDRAIL (Claude Code Protocol)
                 guard = Guardrails()
                 if "<tool_use name=\"bash\"" in response:
