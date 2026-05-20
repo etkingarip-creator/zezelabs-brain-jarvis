@@ -8,8 +8,9 @@ class QueryEngine:
     Advanced Query Engine - Claude Code Protocol (Final Stabilized v7.6)
     Injects Anthropic's autonomous reasoning directly into Zezelabs Jarvis.
     """
-    def __init__(self, model_name="gemini-2.0-flash-exp"):
-        self.model_name = model_name
+    def __init__(self, model_name=None):
+        import os
+        self.model_name = model_name or os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
         self.max_turns = 10
         self.history = []
 

@@ -56,22 +56,24 @@ except ImportError:
 load_dotenv(os.path.join(_root, ".env"))
 
 # 4. INTELLIGENCE (GEMINI 2.0 FLASH & LOCAL FIRST)
-try:
-    import google.generativeai as genai
-    HAS_GENAI = True
-    _api_key = os.getenv("GEMINI_API_KEY")
-    if _api_key:
-        genai.configure(api_key=_api_key)
-        try:
-            # Model listesini kontrol et (debug için)
-            _models = [m.name.split('/')[-1] for m in genai.list_models()]
-            log.info(f"💎 Gemini Bulut Hazır. Modeller: {', '.join(_models[:5])}...")
-        except:
-            log.info(f"💎 Gemini Bulut Bağlantısı Kuruldu.")
-    else:
+HAS_GENAI = False
+if os.getenv("AI_PROVIDER", "deepseek").lower() == "gemini":
+    try:
+        import google.generativeai as genai
+        HAS_GENAI = True
+        _api_key = os.getenv("GEMINI_API_KEY")
+        if _api_key:
+            genai.configure(api_key=_api_key)
+            try:
+                # Model listesini kontrol et (debug için)
+                _models = [m.name.split('/')[-1] for m in genai.list_models()]
+                log.info(f"💎 Gemini Bulut Hazır. Modeller: {', '.join(_models[:5])}...")
+            except:
+                log.info(f"💎 Gemini Bulut Bağlantısı Kuruldu.")
+        else:
+            HAS_GENAI = False
+    except ImportError:
         HAS_GENAI = False
-except ImportError:
-    HAS_GENAI = False
 
 from backend.QueryEngine import QueryEngine
 from backend.tools import BashTool, FileEditTool, FileReadTool
@@ -290,7 +292,7 @@ class Brain:
                     await manager.broadcast({"type": "brain_status", "val": "online", "model": "hermes-agent (API)"})
                     return True
         except Exception as e:
-            log.info(f"ℹ️ Hermes Agent API bağlanılamadı (Çevrimdışı). Ollama/Gemini kontrol ediliyor.")
+            log.info(f"ℹ️ Hermes Agent API unavailable. Selected provider: {os.getenv('AI_PROVIDER', 'deepseek')}")
             self.hermes_status = "offline"
 
         # 2. Fallback to Ollama local tags
@@ -314,47 +316,46 @@ class Brain:
 
     async def think(self, prompt, system="", history=None, force_cloud=False):
         history = history or []
-        
+        provider = os.getenv("AI_PROVIDER", "deepseek").lower()
+
+        # ── PRIORITY 0: DEEPSEEK DIRECT (when force_cloud=True and AI_PROVIDER=deepseek) ──
+        if force_cloud and provider == "deepseek":
+            return await self._think_deepseek(prompt)
+
         # ── PRIORITY 1: HERMES AGENT ──
         await self.auto_configure()
         if self.hermes_status == "online":
             try:
-                # Strategic routing based on prompt type (Operational vs Strategic DeepSeek models)
                 is_strategic = self._is_strategic(prompt)
                 target_model = "deepseek/deepseek-v4-pro" if is_strategic else "deepseek/deepseek-v4-flash"
-                
                 log.info(f"🧠 İstek Hermes Agent Ana Beynine yönlendiriliyor (Model: {target_model})...")
-                
-                # Telemetry broadcast via RabbitMQ
                 publish_rabbitmq_event("hermes_telemetry_start", {
                     "prompt": prompt,
                     "model": target_model,
                     "strategic": is_strategic
                 })
-                
                 response = await self._think_hermes(prompt, system, history, model_override=target_model)
-                
                 publish_rabbitmq_event("hermes_telemetry_success", {
                     "prompt": prompt,
                     "response": response,
                     "model": target_model
                 })
-                
                 return response
             except Exception as e:
                 log.error(f"❌ Hermes Agent düşünme hatası: {e}. Fallback devrede.")
                 publish_rabbitmq_event("hermes_telemetry_failure", {"error": str(e)})
 
-        # ── PRIORITY 2: ZOM DOCTRINE (LOCAL FIRST / CLOUD FALLBACK) ──
+        # ── PRIORITY 2: LOCAL FIRST (OLLAMA) ──
         is_strategic = self._is_strategic(prompt)
-        
         if not force_cloud and not is_strategic and self.status == "online" and self.hermes_status == "offline":
             try:
                 return await self._think_local(prompt, system, history)
             except Exception as e:
                 log.error(f"❌ Yerel Ollama düşünme hatası: {e}")
 
-        # ── PRIORITY 3: CLOUD INTELLIGENCE (GEMINI) ──
+        # ── PRIORITY 3: CLOUD PROVIDER ──
+        if provider == "deepseek":
+            return await self._think_deepseek(prompt)
         return await self._think_cloud(prompt, system, history)
 
     def _is_strategic(self, prompt: str) -> bool:
@@ -404,11 +405,48 @@ class Brain:
             else:
                 raise Exception(f"Ollama Hata: {resp.status_code}")
 
+    async def _think_deepseek(self, prompt: str) -> str:
+        if os.getenv("ZOM_MOCK_DEEPSEEK", "false").lower() == "true":
+            model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+            return f"[MOCK_DEEPSEEK:{model}] {prompt}"
+
+        api_key = os.getenv("DEEPSEEK_API_KEY", "")
+        if not api_key or api_key == "test_key_do_not_commit":
+            return "DeepSeek API anahtarı yapılandırılmamış. DEEPSEEK_API_KEY ortam değişkenini ayarlayın."
+
+        base_url = os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com").rstrip("/")
+        model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "Sen Zezelabs ZOM için çalışan otonom Jarvis çekirdeğisin. Kısa, net ve uygulanabilir yanıt ver."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.2,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(f"{base_url}/chat/completions", headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+        except Exception as e:
+            log.warning(f"DeepSeek request failed: {type(e).__name__}: {e}")
+            return "DeepSeek sağlayıcısı şu anda yanıt veremiyor."
+
     async def _think_cloud(self, prompt, system, history):
         if not HAS_GENAI:
-            return "ZOM Bulut Zekası (Gemini) şu anda kullanılamıyor. Lütfen API anahtarını kontrol edin."
-        
+            provider = os.getenv("AI_PROVIDER", "deepseek")
+            if provider == "gemini":
+                return "ZOM Bulut Zekası (Gemini) şu anda kullanılamıyor. Lütfen API anahtarını kontrol edin."
+            return "DeepSeek sağlayıcısı şu anda yanıt veremiyor."
+
         try:
+            import google.generativeai as genai
             model = genai.GenerativeModel(model_name="gemini-2.5-flash")
             full_prompt = f"{system}\n\nKullanıcı: {prompt}" if system else prompt
             response = model.generate_content(full_prompt)
@@ -419,27 +457,49 @@ class Brain:
 
 
 brain = Brain()
-ear = Ear()
-engine = QueryEngine()
+ear = None
+engine = QueryEngine(os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global ear
     loop = asyncio.get_running_loop()
-    brain.loop = loop; ear.loop = loop; ear.on_transcript = lambda t: engine_thread(t)
+    brain.loop = loop
     
     # ── PURGE OPENCLAW remnants (PROJECT PURGE-AND-ROUTE) ──
-    purge_openclaw()
-    
+    if os.getenv("ZOM_ENABLE_LEGACY_OPENCLAW_CLEANUP", "false").lower() == "true":
+        purge_openclaw()
+    else:
+        log.info("Legacy OpenClaw cleanup skipped.")
+        
     # ── LAUNCH HERMES GATEWAY BACKGROUND PROCESS ──
-    launch_hermes_gateway()
-    
+    if os.getenv("ZOM_ENABLE_HERMES_GATEWAY", "false").lower() == "true":
+        launch_hermes_gateway()
+    else:
+        log.info("Hermes Gateway autostart skipped.")
+        
     # ── OTONOMOUS GITHUB UPLOAD ──
-    trigger_github_push()
-    
+    if os.getenv("ZOM_ENABLE_AUTO_GITHUB_PUSH", "false").lower() == "true":
+        trigger_github_push()
+    else:
+        log.info("Automatic GitHub push disabled during backend startup.")
+
+    # ── VOICE LISTENER INITIALIZATION ──
+    if os.getenv("ZOM_ENABLE_VOICE_LISTENER", "false").lower() == "true":
+        ear = Ear()
+        ear.loop = loop
+        ear.on_transcript = lambda t: engine_thread(t)
+        threading.Thread(target=ear.start, daemon=True).start()
+        log.info("Voice listener started.")
+    else:
+        log.info("Voice listener disabled during backend startup.")
+        
     asyncio.create_task(brain.auto_configure())
     asyncio.create_task(system_stats_broadcaster()) # Start stats loop
-    threading.Thread(target=ear.start, daemon=True).start()
-    log.info("JARVIS ZOM v6.7 CORE ACTIVE.")
+    
+    log.info("JARVIS ZOM CORE ACTIVE.")
+    log.info(f"AI Provider: {os.getenv('AI_PROVIDER', 'deepseek')}")
+    log.info(f"Model: {os.getenv('DEEPSEEK_MODEL', 'deepseek-v4-flash')}")
     yield
 
 async def system_stats_broadcaster():
@@ -491,7 +551,8 @@ async def handle_engine(text):
                 except: pass
             threading.Thread(target=_pub, daemon=True).start()
 
-        prev_ear_state = ear.enabled; ear.enabled = False 
+        prev_ear_state = ear.enabled if ear else False
+        if ear: ear.enabled = False 
         await manager.broadcast({"type": "state", "val": "thinking"})
         try:
             response = await brain.think(text)
@@ -523,7 +584,7 @@ async def handle_engine(text):
             await manager.broadcast({"type": "state", "val": "idle"})
         finally:
             # Race condition fix: ear is re-enabled only after EVERYTHING (including speak) is done
-            ear.enabled = prev_ear_state
+            if ear: ear.enabled = prev_ear_state
 
 async def speak(text):
     if not text or not voice_state.enabled: return
@@ -552,7 +613,7 @@ async def websocket_endpoint(ws: WebSocket):
             data = await ws.receive_text()
             msg = json.loads(data); content = msg.get("val") or msg.get("content")
             if msg.get("type") in ["command", "chat"]: engine_thread(content)
-            if msg.get("type") == "mic_toggle": ear.enabled = msg.get("val")
+            if msg.get("type") == "mic_toggle" and ear: ear.enabled = msg.get("val")
             if msg.get("type") == "voice_toggle": voice_state.enabled = msg.get("val")
     except WebSocketDisconnect: manager.disconnect(ws)
 
