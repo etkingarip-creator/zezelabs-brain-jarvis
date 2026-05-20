@@ -56,8 +56,11 @@ class RouterAgent:
 
         # Engineering & Dev
         if any(w in padded for w in [" git ", " fix ", " bug ", " api ", " test "]) or \
-           any(w in desc for w in ["kod", "deploy", "refactor", "backend", "frontend", "dockerfile", "pipeline"]):
+           any(w in desc for w in ["kod", "deploy", "refactor", "dockerfile", "pipeline"]):
             return "eng"
+        # App Factory
+        if any(w in desc for w in ["app", "todo", "frontend", "backend", "webapp", "saas"]):
+            return "app_factory"
         # Media & Content (checked before broad terms)
         if any(w in desc for w in ["video", "resim", "tasarim", "medya", "icerik", "content",
                                     "thumbnail", "seo", "youtube", "script", "reel", "podcast"]):

@@ -1,22 +1,17 @@
 department: app_factory
-queue: zeze_app_factory_queue
+description: "AppFactory builds full SaaS applications, scaffold projects, and production-ready code structures."
+capabilities:
+  - Create and modify project structures (fastapi, nextjs, react, etc.)
+  - Scaffolding databases and endpoints
+  - Implementing UI/UX logic
 allowed_tools:
   - file_read
   - file_edit
-  - shell_test
-  - browser_preview
-  - git_status
-  - git_log
-  - git_diff
+  - shell_exec
 approval_required:
   - git_push
   - deploy
-  - shell_exec
 forbidden_tools:
   - live_trade
   - withdrawal
-  - leverage
-  - file_delete
-risk_limits:
-  max_shell_timeout_seconds: 60
-  workspace_write_only: true
+  - force_push
