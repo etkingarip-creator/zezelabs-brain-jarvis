@@ -13,3 +13,15 @@ backend/__pycache__/
 .git_trash_*
 OLD_GIT_BACKUP_*
 OLD_GIT_BACKUP_DO_NOT_PUSH_965/
+
+# Agent temporary workspaces
+zeze_eng/dev_workspace/task_*/
+zeze_eng/dev_workspace/**/node_modules/
+zeze_eng/dev_workspace/**/.venv/
+zeze_eng/dev_workspace/**/__pycache__/
+zeze_eng/dev_workspace/**/dist/
+zeze_eng/dev_workspace/**/build/
+zeze_eng/dev_workspace/**/.cache/
+
+Clawde_Code/
+zeze_eng/dev_workspace/task_*
