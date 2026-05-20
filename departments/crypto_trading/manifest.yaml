@@ -1,0 +1,21 @@
+department: crypto_trading
+queue: zeze_crypto_queue
+allowed_tools:
+  - market_data_read
+  - paper_trade
+  - portfolio_view
+approval_required:
+  - live_trade
+forbidden_tools:
+  - withdrawal
+  - leverage
+  - file_edit
+  - shell_exec
+  - git_push
+  - deploy
+risk_limits:
+  paper_trading: true
+  live_trading: false
+  max_position_usd: 0
+  max_daily_loss_usd: 0
+  withdrawal_enabled: false
