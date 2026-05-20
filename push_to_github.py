@@ -64,8 +64,8 @@ OLD_GIT_BACKUP_*
     run(f"git remote add origin {repo_url}")
     
     # 5. Push
-    print("[5/5] Force Pushing clean code...")
-    res = subprocess.run(["git", "push", "-u", "origin", "main"], shell=False)
+    print("[5/5] Pushing code...")
+    res = subprocess.run(["git", "push", "-u", "origin", "main"], shell=False, timeout=120)
     
     if res.returncode == 0:
         print("\n✅ TOTAL VICTORY! Your system is now LIVE on GitHub.")
