@@ -43,12 +43,45 @@ class RouterAgent:
 
         return {"status": "dispatched", "task_id": task_id, "agent": agent_type}
 
+    @staticmethod
+    def _normalize(text: str) -> str:
+        """Normalize Turkish special characters to ASCII for robust keyword matching."""
+        tr_map = str.maketrans("çğışöüÇĞİŞÖÜ", "cgisoucgisou")
+        return text.lower().translate(tr_map)
+
     def _determine_agent(self, description: str) -> str:
-        # Simple heuristic for now, will be upgraded to LLM-based routing
-        desc = description.lower()
-        if any(w in desc for w in ["kod", "yaz", "fix", "bug", "git"]): return "eng"
-        if any(w in desc for w in ["video", "resim", "tasarım", "medya"]): return "media"
-        if any(w in desc for w in ["eğitim", "öğren", "akademi"]): return "academy"
+        desc = self._normalize(description)
+        # Pad with spaces for safe word-boundary checks on short keywords (e.g. "git")
+        padded = f" {desc} "
+
+        # Engineering & Dev
+        if any(w in padded for w in [" git ", " fix ", " bug ", " api ", " test "]) or \
+           any(w in desc for w in ["kod", "deploy", "refactor", "backend", "frontend", "dockerfile", "pipeline"]):
+            return "eng"
+        # Media & Content (checked before broad terms)
+        if any(w in desc for w in ["video", "resim", "tasarim", "medya", "icerik", "content",
+                                    "thumbnail", "seo", "youtube", "script", "reel", "podcast"]):
+            return "media"
+        # Finance & Crypto (before academy to prevent "rapor" stealing budget tasks)
+        if any(w in desc for w in ["finans", "kripto", "crypto", "borsa", "butce", "budget",
+                                    "gelir", "gider", "binance", "btc", "eth", "fiyat", "takip"]):
+            return "fin"
+        # Academy & Research
+        if any(w in desc for w in ["egitim", "ogren", "akademi", "arastir", "research",
+                                    "rapor", "analiz", "analysis", "ozet", "summary"]):
+            return "academy"
+        # Mystic & Strategic
+        if any(w in desc for w in ["strateji", "strategy", "karar", "vizyon", "vision",
+                                    "roadmap", "ezoterik", "mystic", "hedef", "goal"]):
+            return "mystic"
+        # ARO: Sales, Marketing, Outreach
+        if any(w in desc for w in ["satis", "sales", "pazarlama", "marketing", "musteri",
+                                    "client", "lead", "outreach", "teklif", "proposal", "kampanya"]):
+            return "aro"
+        # Telegram & Notifications
+        if any(w in desc for w in ["telegram", "bildirim", "notification", "mesaj", "bot"]):
+            return "telegram"
+        # Safe fallback
         return "general"
 
     async def _handle_failure(self, payload: Dict[str, Any], error_type: str):
