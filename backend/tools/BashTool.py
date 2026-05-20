@@ -1,5 +1,6 @@
 import subprocess
 import logging
+import shlex
 from .base import Tool
 
 log = logging.getLogger("jarvis.tools.bash")
@@ -22,6 +23,6 @@ class BashTool(Tool):
         command = kwargs.get("command")
         if not command: return "HATA: Komut belirtilmedi."
         try:
-            result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(shlex.split(command), shell=False, capture_output=True, text=True, timeout=30)
             return (result.stdout + "\n" + result.stderr).strip() or "Komut calisti."
         except Exception as e: return f"HATA: {e}"

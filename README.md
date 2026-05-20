@@ -101,7 +101,7 @@ docker logs -f zezelabs_orchestrator
 Sistem, `zezelabs_bridge` (Port 7000) üzerinden akıllı yönlendirme yapar. Köprü kapalıysa veya hata verirse otomatik olarak **Keyword Fallback** mekanizması devreye girer.
 
 ### 5. İzleme
-- **RabbitMQ Yönetim UI:** http://localhost:15672 (admin / admin123)
+- **RabbitMQ Yönetim UI:** http://localhost:15672 (admin / your_rabbitmq_password)
 - **n8n Workflow:** http://localhost:5678
 - **ChromaDB API:** http://localhost:8000
 

@@ -3,6 +3,7 @@
 
 import subprocess
 import os
+import shlex
 
 class SovereignCoder:
     """
@@ -17,7 +18,7 @@ class SovereignCoder:
         """Terminal komutlarını otonom olarak çalıştırır ve çıktıyı analiz eder."""
         print(f"[SovereignCoder] 💻 Komut Çalıştırılıyor: {command}")
         try:
-            result = subprocess.run(command, shell=True, capture_output=True, text=True)
+            result = subprocess.run(shlex.split(command), shell=False, capture_output=True, text=True, timeout=30)
             return {
                 "status": "SUCCESS" if result.returncode == 0 else "ERROR",
                 "stdout": result.stdout,

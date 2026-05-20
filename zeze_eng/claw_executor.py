@@ -1,5 +1,6 @@
 import subprocess
 import os
+import shlex
 
 class ClawExecutor:
     def __init__(self, workspace_dir: str):
@@ -18,11 +19,12 @@ class ClawExecutor:
         
         try:
             result = subprocess.run(
-                cmd,
-                shell=True,
+                shlex.split(cmd),
+                shell=False,
                 cwd=self.workspace_dir,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=60
             )
             
             return {

@@ -420,7 +420,7 @@ class Brain:
 
 brain = Brain()
 ear = Ear()
-engine = QueryEngine(brain, [BashTool(), FileEditTool(), FileReadTool()])
+engine = QueryEngine()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

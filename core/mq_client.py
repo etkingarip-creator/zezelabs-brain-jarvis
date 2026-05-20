@@ -35,7 +35,7 @@ class MQClient:
         self.connected = False
         self.fallback_dir = os.path.join(os.getcwd(), "scratch", "queues")
         os.makedirs(self.fallback_dir, exist_ok=True)
-        
+
     def connect(self):
         """SYNCHRONOUS connection with exponential backoff"""
         if not HAS_PIKA:

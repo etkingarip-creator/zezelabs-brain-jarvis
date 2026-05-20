@@ -6,8 +6,8 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      - RABBITMQ_DEFAULT_USER=admin
-      - RABBITMQ_DEFAULT_PASS=admin123
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -19,7 +19,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: zezelabs_redis
-    command: redis-server --requirepass tulpar2026
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
     networks:
       - zezelabs_network
 
@@ -51,10 +51,10 @@ services:
     command: python -u core/orchestrator/main.py
     environment: &base_env
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: zezelabs_chroma
       JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
       OPENJARVIS_ROOT: /openjarvis
@@ -89,10 +89,10 @@ services:
     command: python -u zeze_eng/architect.py
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
       JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
     volumes:
@@ -110,10 +110,10 @@ services:
     restart: unless-stopped
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
       GEMINI_API_KEY: ${GEMINI_API_KEY}
     volumes:
@@ -130,10 +130,10 @@ services:
     command: python -u zeze_eng/auditor.py
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
     volumes:
       - .:/app
@@ -150,10 +150,10 @@ services:
     command: python -u zeze_media/scriptwriter.py
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
       JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
     volumes:
@@ -170,10 +170,10 @@ services:
     command: python -u zeze_media/visionary.py
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
       JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
     volumes:
@@ -190,10 +190,10 @@ services:
     command: python -u zeze_media/automation_agent.py
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
       N8N_WEBHOOK_URL: http://zezelabs_n8n:5678/webhook/test-trigger
       N8N_MEDIA_WEBHOOK: http://zezelabs_n8n:5678/webhook/media-dispatch
@@ -215,10 +215,10 @@ services:
     restart: unless-stopped
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
       JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
       OPENJARVIS_ROOT: /openjarvis
@@ -283,10 +283,10 @@ services:
     command: python -u zeze_academy/researcher.py
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
     volumes:
       - .:/app
@@ -302,10 +302,10 @@ services:
     command: python -u zeze_academy/educator.py
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
       JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
     volumes:
@@ -338,10 +338,10 @@ services:
     command: python -u zeze_mystic/interpreter.py
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
       JARVIS_BRIDGE_URL: http://zeze_jarvis_bridge:7000/query
     volumes:
@@ -556,10 +556,10 @@ services:
     command: python -u core/memory/distillation.py
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
       REDIS_HOST: redis
-      REDIS_PASSWORD: tulpar2026
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD_REQUIRED}
       CHROMA_HOST: chromadb
     volumes:
       - .:/app
@@ -577,11 +577,31 @@ services:
       - "8001:8001"
     environment:
       RABBITMQ_HOST: rabbitmq
-      RABBITMQ_USER: admin
-      RABBITMQ_PASS: admin123
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: ${RABBITMQ_PASS:?RABBITMQ_PASS_REQUIRED}
     depends_on:
       rabbitmq:
         condition: service_healthy
+    networks:
+      - zezelabs_network
+
+  live_matrix_frontend:
+    build: live_matrix/frontend
+    container_name: zeze_live_matrix_ui
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./live_matrix/frontend:/app
+      - /app/node_modules
+    networks:
+      - zezelabs_network
+
+  war_room_ui:
+    build: 
+      context: ./live_matrix/war_room
+      dockerfile: Dockerfile
+    ports:
+      - "3001:80"
     networks:
       - zezelabs_network
 

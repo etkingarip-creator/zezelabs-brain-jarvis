@@ -77,8 +77,8 @@ ws_loop: asyncio.AbstractEventLoop | None = None
 def rabbitmq_listener():
     host = os.getenv("RABBITMQ_HOST", "rabbitmq")
     port = int(os.getenv("RABBITMQ_PORT", 5672))
-    user = os.getenv("RABBITMQ_USER", "admin")
-    pw = os.getenv("RABBITMQ_PASS", "admin123")
+    user = os.getenv("RABBITMQ_USER", "guest")
+    pw = os.getenv("RABBITMQ_PASS", "guest")
     
     credentials = pika.PlainCredentials(user, pw)
     

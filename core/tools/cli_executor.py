@@ -1,5 +1,6 @@
 import subprocess
 import os
+import shlex
 
 class SandboxCLIExecutor:
     """
@@ -27,9 +28,9 @@ class SandboxCLIExecutor:
         print(f"[SandboxCLI] Komut calistiriliyor: {command}")
         try:
             result = subprocess.run(
-                command,
+                shlex.split(command),
                 cwd=self.workspace_path,
-                shell=True,
+                shell=False,
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds

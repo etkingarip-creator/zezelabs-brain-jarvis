@@ -11,8 +11,8 @@ import pika
 
 
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
-RABBITMQ_USER = os.getenv("RABBITMQ_USER", "admin")
-RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "admin123")
+RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
+RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
 OPENJARVIS_ROOT = os.getenv("OPENJARVIS_ROOT", "C:/Users/Zezelabs2/OpenJarvis")
 
 

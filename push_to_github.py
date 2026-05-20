@@ -3,10 +3,11 @@ import subprocess
 import time
 import sys
 import random
+import shlex
 
 def run(cmd):
     print(f"Executing: {cmd}")
-    return subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    return subprocess.run(shlex.split(cmd), shell=False, capture_output=True, text=True)
 
 def main():
     print("======================================================")
@@ -64,7 +65,7 @@ OLD_GIT_BACKUP_*
     
     # 5. Push
     print("[5/5] Force Pushing clean code...")
-    res = subprocess.run("git push -u origin main --force", shell=True)
+    res = subprocess.run(["git", "push", "-u", "origin", "main"], shell=False)
     
     if res.returncode == 0:
         print("\n✅ TOTAL VICTORY! Your system is now LIVE on GitHub.")

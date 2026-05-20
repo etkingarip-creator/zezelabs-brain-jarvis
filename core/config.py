@@ -17,7 +17,7 @@ class Config:
     RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
     RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
     RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
-    
+
     # Paths
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     WORKSPACE_DIR = os.path.join(BASE_DIR, "workspace")
