@@ -68,7 +68,7 @@ class RouterAgent:
         # Finance & Crypto (before academy to prevent "rapor" stealing budget tasks)
         if any(w in desc for w in ["finans", "kripto", "crypto", "borsa", "butce", "budget",
                                     "gelir", "gider", "binance", "btc", "eth", "fiyat", "takip"]):
-            return "fin"
+            return "crypto"
         # Academy & Research
         if any(w in desc for w in ["egitim", "ogren", "akademi", "arastir", "research",
                                     "rapor", "analiz", "analysis", "ozet", "summary"]):
