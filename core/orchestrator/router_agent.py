@@ -3,6 +3,7 @@ import json
 import logging
 import uuid
 from typing import Dict, Any, Optional
+from core.mq_client import MQClient
 
 # CLAUDE CODE PROTOCOL - CORE ROUTER
 class RouterAgent:
@@ -10,8 +11,8 @@ class RouterAgent:
     Master Orchestrator inspired by Claude Code.
     Routes tasks to specialized ZOM agents (zeze_*) with strict retry logic.
     """
-    def __init__(self, mq_client):
-        self.mq = mq_client
+    def __init__(self, mq_client=None):
+        self.mq = mq_client or MQClient()
         self.max_retries = 3
         self.logger = logging.getLogger("zom.router")
 
