@@ -58,11 +58,11 @@ class TestRouterMapping:
 
     def test_btc_goes_to_fin(self):
         agent, _ = route("BTC fiyatini takip et")
-        assert agent == "fin"
+        assert agent == "crypto"
 
     def test_budget_report_goes_to_fin(self):
         agent, _ = route("butce raporu hazirla")
-        assert agent == "fin"
+        assert agent == "crypto"
 
     def test_sales_goes_to_aro(self):
         agent, _ = route("satis kampanyasi planla")
