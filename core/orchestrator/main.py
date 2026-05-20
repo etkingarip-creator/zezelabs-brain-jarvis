@@ -2,6 +2,7 @@ import logging
 import json
 import sys
 import os
+import uuid
 from datetime import datetime
 
 # Add project root to path
@@ -53,13 +54,11 @@ class Orchestrator:
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
         except Exception as e:
-            self.logger.error(f"❌ Orchestrator Error: {e}")
-            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-
-        except Exception as e:
-            logger.error(f"❌ Critical Orchestrator Error: {e}")
-            if task_data: self._shunt_to_dlq(task_data, str(e))
-            ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+            self.logger.exception(f"❌ Orchestrator Error: {e}")
+            if "task_data" in locals() and task_data:
+                self._shunt_to_dlq(task_data, str(e))
+            if ch and method:
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
     def _determine_agent_queue(self, description: str) -> str:
         if any(w in description for w in ["kod", "yaz", "fix", "bug", "git", "dev"]): return "zeze_eng_queue"
@@ -69,16 +68,26 @@ class Orchestrator:
 
     def _shunt_to_dlq(self, task_data, error):
         logger.warning(f"🚨 Shunting task {task_data.get('task_id')} to DLQ: {error}")
-        self.mq.publish("dead_letter_queue", {**task_data, "error": error, "failed_at": datetime.utcnow().isoformat()})
+        self.mq.publish("zom_dead_letter_queue", {**task_data, "error": error, "failed_at": datetime.utcnow().isoformat()})
 
     def start(self):
         if not self.mq.connect():
             logger.error("❌ MQ Connection failed. Orchestrator cannot start.")
             return
         
-        # Setup all queues
-        queues = ["main_orchestrator_queue", "zeze_eng_queue", "zeze_media_queue", "zeze_academy_queue", "dead_letter_queue"]
-        for q in queues: self.mq.setup_dlq(q) if q != "dead_letter_queue" else self.mq.declare_queue(q)
+        queues = [
+            "main_orchestrator_queue",
+            "zeze_eng_queue",
+            "zeze_media_queue",
+            "zeze_academy_queue",
+            "zom_dead_letter_queue",
+        ]
+
+        for q in queues:
+            if q != "zom_dead_letter_queue":
+                self.mq.setup_dlq(q)
+            elif self.mq.channel:
+                self.mq.channel.queue_declare(queue=q, durable=True)
         
         logger.info("🚀 ZOM Orchestrator listening on 'main_orchestrator_queue'...")
         self.mq.consume("main_orchestrator_queue", self.on_task_received)

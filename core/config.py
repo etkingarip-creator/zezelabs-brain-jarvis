@@ -12,7 +12,11 @@ class Config:
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "tulpar2026")
+    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+    RABBITMQ_USER = os.getenv("RABBITMQ_USER", "guest")
+    RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "guest")
     
     # Paths
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

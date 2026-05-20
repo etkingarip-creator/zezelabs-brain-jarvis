@@ -24,15 +24,17 @@ class MQClient:
     - ✅ Connection pooling ready
     - ✅ Error recovery with fallback
     """
-    def __init__(self, host='localhost', user='admin', password='admin123', max_retries=3):
-        self.host = host
-        self.user = user
-        self.password = password
-        self.max_retries = max_retries
+    def __init__(self, host=None, user=None, password=None, max_retries=None):
+        self.host = host or os.getenv("RABBITMQ_HOST", "localhost")
+        self.user = user or os.getenv("RABBITMQ_USER", "guest")
+        self.password = password if password is not None else os.getenv("RABBITMQ_PASS", "guest")
+        self.max_retries = int(max_retries if max_retries is not None else os.getenv("ZOM_MAX_RETRIES", "3"))
         self.logger = logging.getLogger("zom.mq")
         self.connection = None
         self.channel = None
         self.connected = False
+        self.fallback_dir = os.path.join(os.getcwd(), "scratch", "queues")
+        os.makedirs(self.fallback_dir, exist_ok=True)
         
     def connect(self):
         """SYNCHRONOUS connection with exponential backoff"""

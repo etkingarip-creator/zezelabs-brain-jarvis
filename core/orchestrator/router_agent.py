@@ -33,10 +33,9 @@ class RouterAgent:
             "max_retries": self.max_retries
         }
 
-        # 2. DISPATCH (Action Step)
         queue_name = f"zeze_{agent_type}_queue"
-        success = await self.mq.publish(queue_name, payload)
-        
+        success = self.mq.publish(queue_name, payload)
+
         if not success:
             await self._handle_failure(payload, "MQ_PUBLISH_FAILED")
             return {"status": "error", "message": "Failed to dispatch task to queue."}
@@ -53,8 +52,13 @@ class RouterAgent:
 
     async def _handle_failure(self, payload: Dict[str, Any], error_type: str):
         """
-        Claude Code Style DLQ (Dead Letter Queue) handling.
+        Claude Code Style DLQ handling.
         Prevents infinite loops by shunting failed tasks to a manual review queue.
         """
-        self.logger.error(f"Task {payload['task_id']} failed with {error_type}. Moving to DLQ.")
-        await self.mq.publish("zom_dead_letter_queue", {**payload, "error": error_type})
+        task_id = payload.get("task_id", "unknown")
+        self.logger.error(f"Task {task_id} failed with {error_type}. Moving to DLQ.")
+
+        success = self.mq.publish("zom_dead_letter_queue", {**payload, "error": error_type})
+
+        if not success:
+            self.logger.critical(f"Failed to publish task {task_id} to DLQ.")
