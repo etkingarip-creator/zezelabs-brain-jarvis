@@ -27,7 +27,26 @@ class TelemetryEvent:
     finished_at: Optional[str]  = None
     error: Optional[str]        = None
 
+    def __getitem__(self, key):
+        return getattr(self, key)
 
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
+    def to_dict(self):
+        return {
+            "event_id": self.event_id,
+            "task_id": self.task_id,
+            "department": self.department,
+            "tool_name": self.tool_name,
+            "action": self.action,
+            "status": self.status,
+            "risk_level": self.risk_level,
+            "approval_required": self.approval_required,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "error": self.error,
+        }
 class Telemetry:
     """In-memory telemetry store with structured logging. Swap for Redis/DB in prod."""
 

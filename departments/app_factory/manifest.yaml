@@ -1,4 +1,5 @@
 department: app_factory
+queue: zeze_app_factory_queue
 description: "AppFactory builds full SaaS applications, scaffold projects, and production-ready code structures."
 capabilities:
   - Create and modify project structures (fastapi, nextjs, react, etc.)

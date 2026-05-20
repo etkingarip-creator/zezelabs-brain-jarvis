@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from core.operator_runtime.contracts import (
-    AgentResult, ToolRequest, RiskLevel,
+    AgentResult, ToolRequest, RiskLevel, DepartmentName
 )
 from core.operator_runtime.policy_engine import PolicyEngine
 from core.operator_runtime.clawde_kernel import ClawdeOperatorKernel
@@ -36,6 +36,7 @@ class AppFactoryAgent:
         kernel: Optional[ClawdeOperatorKernel] = None,
     ):
         self.workspace_root = os.path.realpath(os.path.abspath(workspace_root))
+        self.department = DepartmentName.APP_FACTORY
         self.policy = policy_engine or PolicyEngine(department=DEPARTMENT)
         self.kernel = kernel or ClawdeOperatorKernel(
             department=DEPARTMENT,

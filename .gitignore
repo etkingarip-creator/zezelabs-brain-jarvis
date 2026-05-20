@@ -29,3 +29,6 @@ zeze_eng/dev_workspace/**/build/
 zeze_eng/dev_workspace/**/.cache/
 
 zeze_eng/dev_workspace/
+
+# AppFactory dry-run generated outputs
+app_factory/todo_saas/
