@@ -32,3 +32,6 @@ zeze_eng/dev_workspace/
 
 # AppFactory dry-run generated outputs
 app_factory/todo_saas/
+
+# Crypto paper_state outputs
+crypto_trading/paper_state/

@@ -1,21 +1,19 @@
 department: crypto_trading
 queue: zeze_crypto_queue
+description: "CryptoTrading department handles paper trading, market analysis, and risk assessment safely."
+capabilities:
+  - Generate paper trading signals based on mock data
+  - Update local paper portfolio state
+  - Enforce strict risk policies (no live trading, no withdrawals)
 allowed_tools:
-  - market_data_read
-  - paper_trade
-  - portfolio_view
-approval_required:
-  - live_trade
-forbidden_tools:
-  - withdrawal
-  - leverage
+  - file_read
   - file_edit
   - shell_exec
+approval_required:
   - git_push
   - deploy
-risk_limits:
-  paper_trading: true
-  live_trading: false
-  max_position_usd: 0
-  max_daily_loss_usd: 0
-  withdrawal_enabled: false
+forbidden_tools:
+  - live_trade
+  - withdrawal
+  - leverage
+  - force_push

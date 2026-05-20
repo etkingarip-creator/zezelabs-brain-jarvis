@@ -1,9 +1,12 @@
+import os
 import pytest
 from core.operator_runtime.contracts import AgentResult, DepartmentName
 from departments.crypto_trading.agent import CryptoTradingAgent
 
+WORKSPACE = os.path.abspath(".")
+
 def agent():
-    return CryptoTradingAgent()
+    return CryptoTradingAgent(workspace_root=WORKSPACE)
 
 def test_crypto_paper_task_success():
     a = agent()
@@ -25,6 +28,13 @@ def test_crypto_paper_task_success():
     assert checks["paper_trade_allowed"] is True
     assert checks["live_trade_allowed"] is False
     assert checks["withdrawal_allowed"] is False
+    assert checks["leverage_denied"] is True
+
+    # Check files are created
+    state_dir = os.path.join(WORKSPACE, "crypto_trading", "paper_state")
+    assert os.path.exists(os.path.join(state_dir, "portfolio.json"))
+    assert os.path.exists(os.path.join(state_dir, "last_signal.json"))
+    assert os.path.exists(os.path.join(state_dir, "report.md"))
 
 def test_crypto_telemetry():
     from core.operator_runtime.telemetry import get_telemetry
@@ -41,3 +51,4 @@ def test_crypto_telemetry():
     our_event = next(e for e in reversed(events) if e.tool_name == "crypto_agent" and e.action == "paper_trade")
     assert our_event.department == "crypto_trading"
     assert our_event.status == "success"
+
