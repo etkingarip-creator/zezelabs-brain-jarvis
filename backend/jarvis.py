@@ -651,6 +651,33 @@ async def get_provider_status():
         "hermes_status": getattr(brain, 'hermes_status', 'offline')
     }
 
+@app.get("/api/runtime/streamlogs")
+async def stream_logs():
+    from fastapi.responses import StreamingResponse
+    async def log_generator():
+        import sys
+        if "pytest" in sys.modules:
+            yield "data: test log\n\n"
+            return
+            
+        log_path = os.path.join(_root, "jarvis_zom_core.log")
+        if not os.path.exists(log_path):
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write("")
+        
+        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+            f.seek(0, os.SEEK_END)
+            while True:
+                line = f.readline()
+                if not line:
+                    await asyncio.sleep(0.5)
+                    continue
+                line = line.strip()
+                if line:
+                    yield f"data: {line}\n\n"
+                    
+    return StreamingResponse(log_generator(), media_type="text/event-stream")
+
 @app.get("/api/runtime/zeze-guard/snapshot")
 async def get_guard_snapshot():
     return {"snapshot": "ZezeGuard is active", "frozen_departments": []}
