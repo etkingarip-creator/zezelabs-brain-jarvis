@@ -41,6 +41,9 @@ docs/audits/raw/*.txt
 # Zeze ARO dogfood reports
 zeze_aro/dogfood_reports/
 
+# Generated tasks
+workspace/generated/
+
 # Media Factory dogfood reports
 media_factory/dogfood_reports/
 

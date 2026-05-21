@@ -619,11 +619,22 @@ async def speak(text):
 
 app = FastAPI(lifespan=lifespan)
 
-from pydantic import BaseModel
+from typing import Any, Optional
+from pydantic import BaseModel, Field
+from fastapi import HTTPException
 
 class TaskRequest(BaseModel):
-    task: str
+    task: Optional[str] = None
+    goal: Optional[str] = None
+    prompt: Optional[str] = None
+    text: Optional[str] = None
+    message: Optional[str] = None
     dry_run: bool = True
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    def resolved_goal(self) -> str:
+        value = self.goal or self.task or self.prompt or self.text or self.message or ""
+        return value.strip()
 
 @app.get("/api/runtime/status")
 async def get_runtime_status():
@@ -645,9 +656,38 @@ async def get_guard_snapshot():
 
 @app.post("/api/jarvis/task")
 async def post_task(req: TaskRequest):
+    goal = req.resolved_goal()
+    if not goal:
+        raise HTTPException(status_code=400, detail="goal is required")
+        
+    mode = os.getenv("ZOM_AI_MODE", "hybrid_deepseek_hermes").lower()
+    
+    if mode == "hybrid_deepseek_hermes":
+        from core.ai.provider_sync import ProviderSyncOrchestrator
+        orchestrator = ProviderSyncOrchestrator()
+        
+        merged_metadata = {**req.metadata, "dry_run": req.dry_run}
+        hybrid_result = await orchestrator.run_hybrid_task(goal, metadata=merged_metadata)
+        
+        task_id = hybrid_result.get("task_id", "")
+        plan = hybrid_result.get("plan", {})
+        
+        created_files = hybrid_result.get("created_files", [])
+            
+        return {
+            "success": hybrid_result.get("success", False),
+            "task_id": task_id,
+            "degraded_mode": hybrid_result.get("degraded_mode", False),
+            "provider_mode": mode,
+            "hermes_status": hybrid_result.get("hermes_status", "unknown"),
+            "created_files": created_files,
+            "telemetry_events": 1,
+            "zeze_guard": hybrid_result.get("zeze_guard", {"roi_recorded": False, "loop_recorded": False})
+        }
+    
     if not brain:
         return {"error": "Brain not ready"}
-    response = await brain.think(req.task)
+    response = await brain.think(goal)
     return {"result": response, "dry_run": req.dry_run}
 
 @app.websocket("/ws")
