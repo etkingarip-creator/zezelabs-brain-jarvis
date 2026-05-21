@@ -1,6 +1,13 @@
 import importlib
 import sys
 import traceback
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+import time
 
 MODULES = [
     "backend.jarvis",
@@ -22,8 +29,10 @@ MODULES = [
 def smoke_test():
     for mod in MODULES:
         try:
+            start = time.time()
             importlib.import_module(mod)
-            print(f"[OK] {mod}")
+            elapsed = time.time() - start
+            print(f"[OK] {mod} {elapsed:.3f}s")
         except Exception as e:
             print(f"[FAIL] {mod}: {type(e).__name__} - {str(e)}")
 

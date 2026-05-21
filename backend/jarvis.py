@@ -34,12 +34,7 @@ logging.basicConfig(
 log = logging.getLogger("jarvis_zom")
 
 # 3. IMPORTS
-import edge_tts
 import httpx
-import numpy as np
-import sounddevice as sd
-from faster_whisper import WhisperModel
-from silero_vad import load_silero_vad, VADIterator
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import uvicorn
 from dotenv import load_dotenv
@@ -58,22 +53,9 @@ load_dotenv(os.path.join(_root, ".env"))
 # 4. INTELLIGENCE (GEMINI 2.0 FLASH & LOCAL FIRST)
 HAS_GENAI = False
 if os.getenv("AI_PROVIDER", "deepseek").lower() == "gemini":
-    try:
-        import google.generativeai as genai
+    if os.getenv("GEMINI_API_KEY"):
         HAS_GENAI = True
-        _api_key = os.getenv("GEMINI_API_KEY")
-        if _api_key:
-            genai.configure(api_key=_api_key)
-            try:
-                # Model listesini kontrol et (debug için)
-                _models = [m.name.split('/')[-1] for m in genai.list_models()]
-                log.info(f"💎 Gemini Bulut Hazır. Modeller: {', '.join(_models[:5])}...")
-            except:
-                log.info(f"💎 Gemini Bulut Bağlantısı Kuruldu.")
-        else:
-            HAS_GENAI = False
-    except ImportError:
-        HAS_GENAI = False
+        log.info("💎 Gemini config delayed to first use.")
 
 from backend.QueryEngine import QueryEngine
 from backend.tools import BashTool, FileEditTool, FileReadTool
@@ -118,11 +100,17 @@ class Ear:
         self._iter = None; self._on = False; self._buf = []; self._vad_buf = []
         self._tlast = 0.0; self._vmsg_last = 0.0; self.loop = None; self.on_transcript = None
         self.enabled = True
-        log.info("VAD Yukleniyor..."); self._vad = load_silero_vad(onnx=True)
+        log.info("VAD Yukleniyor...")
+        from silero_vad import load_silero_vad, VADIterator
+        self._vad = load_silero_vad(onnx=True)
         self._iter = VADIterator(self._vad, sampling_rate=SAMPLE_RATE)
-        log.info("Whisper Yukleniyor..."); self._stt = WhisperModel("tiny", device="cpu")
+        log.info("Whisper Yukleniyor...")
+        from faster_whisper import WhisperModel
+        self._stt = WhisperModel("tiny", device="cpu")
 
     def start(self):
+        import numpy as np
+        import sounddevice as sd
         def _cb(indata, f, t, status):
             if not self.enabled: return
             if self._iter is None or self.loop is None: return
@@ -149,6 +137,7 @@ class Ear:
                     self._on = False; self._buf = []; self._iter.reset_states()
         self._stream = sd.InputStream(device=None, samplerate=SAMPLE_RATE, channels=1, callback=_cb)
         self._stream.start()
+        log.info("Ear stream started.")
 
     def _stt_thread(self, audio):
         try:
@@ -279,35 +268,42 @@ class Brain:
         self.hermes_status = "offline"
 
     async def auto_configure(self):
+        mode = os.getenv("ZOM_AI_MODE", "hybrid_deepseek_hermes").lower()
+        provider = os.getenv("AI_PROVIDER", "deepseek").lower()
+        hermes_sync = os.getenv("ZOM_ENABLE_HERMES_SYNC", "false").lower() == "true"
+        ollama_fallback = os.getenv("ZOM_ENABLE_OLLAMA_FALLBACK", "false").lower() == "true"
+
         # 1. First, check if Hermes Agent API is online
-        try:
-            async with httpx.AsyncClient(timeout=2) as client:
-                headers = {"Authorization": f"Bearer {self.hermes_api_key}"} if self.hermes_api_key else {}
-                resp = await client.get(f"{self.hermes_url}/models", headers=headers)
-                if resp.status_code == 200:
-                    self.hermes_status = "online"
-                    self.status = "online"
-                    self.model = "hermes-agent"
-                    log.info("🧠 Hermes Agent API Çevrimiçi! Jarvis'in Ana Beyni olarak ayarlandı.")
-                    await manager.broadcast({"type": "brain_status", "val": "online", "model": "hermes-agent (API)"})
-                    return True
-        except Exception as e:
-            log.info(f"ℹ️ Hermes Agent API unavailable. Selected provider: {os.getenv('AI_PROVIDER', 'deepseek')}")
-            self.hermes_status = "offline"
+        if hermes_sync and mode == "hybrid_deepseek_hermes":
+            try:
+                async with httpx.AsyncClient(timeout=2) as client:
+                    headers = {"Authorization": f"Bearer {self.hermes_api_key}"} if self.hermes_api_key else {}
+                    resp = await client.get(f"{self.hermes_url}/models", headers=headers)
+                    if resp.status_code == 200:
+                        self.hermes_status = "online"
+                        self.status = "online"
+                        self.model = "hermes-agent"
+                        log.info("🧠 Hermes Agent API Çevrimiçi! Jarvis'in Ana Beyni olarak ayarlandı.")
+                        await manager.broadcast({"type": "brain_status", "val": "online", "model": "hermes-agent (API)"})
+                        return True
+            except Exception as e:
+                log.info(f"ℹ️ Hermes Agent API unavailable. Selected provider: {provider}")
+                self.hermes_status = "offline"
 
         # 2. Fallback to Ollama local tags
-        try:
-            async with httpx.AsyncClient(timeout=2) as client:
-                resp = await client.get(f"{self.url}/api/tags")
-                if resp.status_code == 200:
-                    models = resp.json().get("models", [])
-                    if models:
-                        self.model = models[0]["name"]
-                        self.status = "online"
-                        await manager.broadcast({"type": "brain_status", "val": "online", "model": self.model})
-                        return True
-        except Exception as e:
-            log.warning(f"⚠️ Local Ollama da çevrimdışı: {e}")
+        if ollama_fallback:
+            try:
+                async with httpx.AsyncClient(timeout=2) as client:
+                    resp = await client.get(f"{self.url}/api/tags")
+                    if resp.status_code == 200:
+                        models = resp.json().get("models", [])
+                        if models:
+                            self.model = models[0]["name"]
+                            self.status = "online"
+                            await manager.broadcast({"type": "brain_status", "val": "online", "model": self.model})
+                            return True
+            except Exception as e:
+                log.warning(f"⚠️ Local Ollama da çevrimdışı: {e}")
 
         # 3. Fallback to Cloud/offline state
         self.status = "offline"
@@ -317,6 +313,18 @@ class Brain:
     async def think(self, prompt, system="", history=None, force_cloud=False):
         history = history or []
         provider = os.getenv("AI_PROVIDER", "deepseek").lower()
+        mode = os.getenv("ZOM_AI_MODE", "hybrid_deepseek_hermes").lower()
+
+        # ── HYBRID MODE ──
+        if mode == "hybrid_deepseek_hermes":
+            from core.ai.provider_sync import ProviderSyncOrchestrator
+            orchestrator = ProviderSyncOrchestrator()
+            
+            hybrid_result = await orchestrator.run_hybrid_task(prompt)
+            if hybrid_result.get("degraded_mode"):
+                return await self._think_deepseek(prompt)
+                
+            return f"Hybrid Execution Plan: {hybrid_result.get('plan', {}).get('action')} - Execution: {hybrid_result.get('execution', {}).get('execution_status')}"
 
         # ── PRIORITY 0: DEEPSEEK DIRECT (when force_cloud=True and AI_PROVIDER=deepseek) ──
         if force_cloud and provider == "deepseek":
@@ -347,7 +355,8 @@ class Brain:
 
         # ── PRIORITY 2: LOCAL FIRST (OLLAMA) ──
         is_strategic = self._is_strategic(prompt)
-        if not force_cloud and not is_strategic and self.status == "online" and self.hermes_status == "offline":
+        ollama_fallback = os.getenv("ZOM_ENABLE_OLLAMA_FALLBACK", "false").lower() == "true"
+        if ollama_fallback and not force_cloud and not is_strategic and self.status == "online" and self.hermes_status == "offline":
             try:
                 return await self._think_local(prompt, system, history)
             except Exception as e:
@@ -356,7 +365,9 @@ class Brain:
         # ── PRIORITY 3: CLOUD PROVIDER ──
         if provider == "deepseek":
             return await self._think_deepseek(prompt)
-        return await self._think_cloud(prompt, system, history)
+        if provider == "gemini":
+            return await self._think_cloud(prompt, system, history)
+        return await self._think_deepseek(prompt)
 
     def _is_strategic(self, prompt: str) -> bool:
         """Determines if a prompt requires high-level intelligence."""
@@ -447,6 +458,7 @@ class Brain:
 
         try:
             import google.generativeai as genai
+            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             model = genai.GenerativeModel(model_name="gemini-2.5-flash")
             full_prompt = f"{system}\n\nKullanıcı: {prompt}" if system else prompt
             response = model.generate_content(full_prompt)
@@ -456,13 +468,15 @@ class Brain:
             return f"Bulut Zekası Hatası: {e}"
 
 
-brain = Brain()
+brain = None
 ear = None
-engine = QueryEngine(os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"))
+engine = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global ear
+    global ear, brain, engine
+    brain = Brain()
+    engine = QueryEngine(os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"))
     loop = asyncio.get_running_loop()
     brain.loop = loop
     
@@ -588,6 +602,7 @@ async def handle_engine(text):
 
 async def speak(text):
     if not text or not voice_state.enabled: return
+    import edge_tts
     try:
         clean_text = re.sub(r'[*_`#]', '', text)
         communicate = edge_tts.Communicate(clean_text, "tr-TR-AhmetNeural")
@@ -603,6 +618,37 @@ async def speak(text):
     except Exception as e: log.error(f"TTS Error: {e}")
 
 app = FastAPI(lifespan=lifespan)
+
+from pydantic import BaseModel
+
+class TaskRequest(BaseModel):
+    task: str
+    dry_run: bool = True
+
+@app.get("/api/runtime/status")
+async def get_runtime_status():
+    return {"status": "active", "version": "1.0", "ai_mode": os.getenv("ZOM_AI_MODE", "hybrid_deepseek_hermes")}
+
+@app.get("/api/runtime/provider-status")
+async def get_provider_status():
+    if not brain:
+        return {"status": "starting"}
+    return {
+        "brain_status": brain.status,
+        "brain_model": brain.model,
+        "hermes_status": getattr(brain, 'hermes_status', 'offline')
+    }
+
+@app.get("/api/runtime/zeze-guard/snapshot")
+async def get_guard_snapshot():
+    return {"snapshot": "ZezeGuard is active", "frozen_departments": []}
+
+@app.post("/api/jarvis/task")
+async def post_task(req: TaskRequest):
+    if not brain:
+        return {"error": "Brain not ready"}
+    response = await brain.think(req.task)
+    return {"result": response, "dry_run": req.dry_run}
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
