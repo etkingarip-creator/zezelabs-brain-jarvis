@@ -3,6 +3,8 @@ import json
 import sys
 import os
 import uuid
+import threading
+import time
 from datetime import datetime
 
 # Add project root to path
@@ -11,19 +13,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from core.mq_client import MQClient
 from core.config import config
 
-# Setup structured logging placeholder (Actual logging_setup will be created next)
+# Setup structured logging placeholder
 logging.basicConfig(level=config.LOG_LEVEL, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger("zom.orchestrator")
 
 class Orchestrator:
     """
-    Main ZOM Orchestrator (v10.0)
-    Addresses GÖREV 3.1 - Infinite Loop Protection
+    Main ZOM Orchestrator (v11.0)
+    Addresses GÖREV 3.1 - Infinite Loop Protection & Multi-agent Orchestration
     """
     def __init__(self):
         self.mq = MQClient(host=config.RABBITMQ_HOST, user=config.RABBITMQ_USER, password=config.RABBITMQ_PASS)
         self.task_retries = {} # {task_id: attempt_count}
         self.logger = logger
+        self.threads = []
 
     def on_task_received(self, ch, method, properties, body):
         try:
@@ -70,16 +73,55 @@ class Orchestrator:
         logger.warning(f"🚨 Shunting task {task_data.get('task_id')} to DLQ: {error}")
         self.mq.publish("zom_dead_letter_queue", {**task_data, "error": error, "failed_at": datetime.utcnow().isoformat()})
 
+    def _worker_callback(self, queue_name: str):
+        def callback(ch, method, properties, body):
+            try:
+                task_data = json.loads(body)
+                task_id = task_data.get("task_id", "unknown")
+                self.logger.info(f"👷 [Worker - {queue_name}] Received task {task_id}: {task_data.get('description', '')}")
+                
+                # Simulate agent processing
+                task_data["status"] = "completed"
+                task_data["processed_by"] = f"worker_{queue_name}"
+                task_data["completed_at"] = datetime.utcnow().isoformat()
+                
+                # Acknowledge the message
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+                self.logger.info(f"👷 [Worker - {queue_name}] Task {task_id} successfully processed and acknowledged.")
+            except Exception as e:
+                self.logger.error(f"❌ [Worker - {queue_name}] Error processing task: {e}")
+                if ch and method:
+                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+        return callback
+
+    def _start_worker_thread(self, queue_name: str):
+        def run():
+            thread_mq = MQClient(host=config.RABBITMQ_HOST, user=config.RABBITMQ_USER, password=config.RABBITMQ_PASS)
+            # Try to connect, otherwise fall back to local folder polling
+            thread_mq.connect()
+            try:
+                thread_mq.declare_queue(queue_name)
+                thread_mq.consume(queue_name, self._worker_callback(queue_name))
+            except Exception as e:
+                self.logger.error(f"❌ [Worker - {queue_name}] Background thread error: {e}")
+            finally:
+                thread_mq.close()
+
+        t = threading.Thread(target=run, name=f"worker_{queue_name}", daemon=True)
+        t.start()
+        self.threads.append(t)
+        self.logger.info(f"🧵 Spawned background worker thread for queue: {queue_name}")
+
     def start(self):
-        if not self.mq.connect():
-            logger.error("❌ MQ Connection failed. Orchestrator cannot start.")
-            return
+        # Even if connection fails, fallback mode in MQClient enables local execution
+        self.mq.connect()
         
         queues = [
             "main_orchestrator_queue",
             "zeze_eng_queue",
             "zeze_media_queue",
             "zeze_academy_queue",
+            "zeze_general_queue",
             "zom_dead_letter_queue",
         ]
 
@@ -89,6 +131,16 @@ class Orchestrator:
             elif self.mq.channel:
                 self.mq.channel.queue_declare(queue=q, durable=True)
         
+        # Start background worker subscription threads for agent queues
+        worker_queues = [
+            "zeze_eng_queue",
+            "zeze_media_queue",
+            "zeze_academy_queue",
+            "zeze_general_queue",
+        ]
+        for wq in worker_queues:
+            self._start_worker_thread(wq)
+
         logger.info("🚀 ZOM Orchestrator listening on 'main_orchestrator_queue'...")
         self.mq.consume("main_orchestrator_queue", self.on_task_received)
 

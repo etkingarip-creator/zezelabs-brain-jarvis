@@ -28,8 +28,20 @@ class ProviderSyncOrchestrator:
         mode = self.get_mode()
         hermes_health = "unknown"
         if self.hermes_enabled():
-            # Mock health check for Hermes since we are not making external requests in Phase 1 if not needed
-            hermes_health = "offline" if not self.hermes_client else "online"
+            import httpx
+            url = os.getenv("HERMES_API_URL", "https://api.hermes.ai").rstrip("/") + "/health"
+            api_key = os.getenv("HERMES_API_KEY", "")
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            try:
+                with httpx.Client(timeout=3.0) as client:
+                    resp = client.get(url, headers=headers)
+                    if resp.status_code == 200:
+                        hermes_health = "online"
+                    else:
+                        hermes_health = f"error_{resp.status_code}"
+            except Exception as e:
+                log.warning(f"Hermes health ping failed: {type(e).__name__}")
+                hermes_health = "offline"
             
         return {
             "mode": mode,
@@ -38,6 +50,34 @@ class ProviderSyncOrchestrator:
             "ollama_fallback_enabled": self.ollama_fallback_enabled(),
             "clawde_operator_enabled": os.getenv("ZOM_ENABLE_CLAWDE_OPERATOR", "true").lower() == "true"
         }
+
+    async def sync_hermes_status(self) -> dict:
+        """Asynchronously queries `/status` on the Hermes gateway"""
+        if not self.hermes_enabled():
+            return {"status": "disabled", "message": "Hermes sync is disabled"}
+            
+        import httpx
+        url = os.getenv("HERMES_API_URL", "https://api.hermes.ai").rstrip("/") + "/status"
+        api_key = os.getenv("HERMES_API_KEY", "")
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"} if api_key else {"Content-Type": "application/json"}
+        
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    try:
+                        return resp.json()
+                    except:
+                        return {"status": "online", "raw_response": resp.text}
+                else:
+                    return {"status": "error", "code": resp.status_code, "message": f"HTTP error {resp.status_code}"}
+        except httpx.RequestError as e:
+            log.error(f"Hermes status sync request error: {type(e).__name__}")
+            return {"status": "offline", "error": type(e).__name__}
+        except Exception as e:
+            log.error(f"Hermes status sync unexpected error: {type(e).__name__}")
+            return {"status": "offline", "error": type(e).__name__}
+
 
     async def plan_with_deepseek(self, prompt: str, metadata=None) -> dict:
         log.info("DeepSeek planning started.")
