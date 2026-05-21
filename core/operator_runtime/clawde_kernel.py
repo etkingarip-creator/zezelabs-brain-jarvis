@@ -14,6 +14,7 @@ from .contracts import ToolRequest, ToolResult, RiskLevel, ApprovalStatus
 from .policy_engine import PolicyEngine
 from .telemetry import get_telemetry
 from .workspace_guard import WorkspaceGuard
+from core.mcp_client import MCPClient
 
 log = logging.getLogger("zom.clawde_kernel")
 
@@ -211,3 +212,122 @@ class ClawdeOperatorKernel:
         return ToolResult(task_id=request.task_id, tool_name="browser_action",
                           success=False, error="Browser automation not yet connected to Clawde runtime",
                           started_at=started, finished_at=datetime.now(timezone.utc))
+
+    # ── MCP Tool Execution ──────────────────────────────────────────────────────
+    async def execute_mcp_tool(self, request: ToolRequest, client: MCPClient) -> ToolResult:
+        started = datetime.now(timezone.utc)
+        tool_name = request.tool_name
+        args = request.args or {}
+        
+        # 1. Registry allowed/forbidden lists check
+        from core.registry import DEPARTMENTS
+        dept_config = DEPARTMENTS.get(self.department, {})
+        allowed_tools = dept_config.get("allowed_tools", [])
+        forbidden_tools = dept_config.get("forbidden_tools", [])
+        
+        if tool_name in forbidden_tools:
+            reason = f"Security Violation: Tool '{tool_name}' is forbidden for department '{self.department}'."
+            self.telemetry.record_execution(
+                task_id=request.task_id, department=self.department,
+                tool_name=tool_name, action=request.action,
+                status="denied", risk_level=RiskLevel.CRITICAL.value,
+                started_at=started, error=reason,
+            )
+            return ToolResult(task_id=request.task_id, tool_name=tool_name,
+                              success=False, error=reason,
+                              started_at=started, finished_at=datetime.now(timezone.utc))
+                              
+        if allowed_tools and tool_name not in allowed_tools:
+            reason = f"Security Violation: Tool '{tool_name}' is not in the allowlist for department '{self.department}'."
+            self.telemetry.record_execution(
+                task_id=request.task_id, department=self.department,
+                tool_name=tool_name, action=request.action,
+                status="denied", risk_level=RiskLevel.CRITICAL.value,
+                started_at=started, error=reason,
+            )
+            return ToolResult(task_id=request.task_id, tool_name=tool_name,
+                              success=False, error=reason,
+                              started_at=started, finished_at=datetime.now(timezone.utc))
+        
+        # 2. Input Sanitization (Path traversal and dangerous payload check)
+        for key, val in args.items():
+            val_str = str(val)
+            # Path traversal check
+            if ".." in val_str:
+                reason = f"Security Violation: Path traversal detected in argument '{key}'."
+                self.telemetry.record_execution(
+                    task_id=request.task_id, department=self.department,
+                    tool_name=tool_name, action=request.action,
+                    status="denied", risk_level=RiskLevel.CRITICAL.value,
+                    started_at=started, error=reason,
+                )
+                return ToolResult(task_id=request.task_id, tool_name=tool_name,
+                                  success=False, error=reason,
+                                  started_at=started, finished_at=datetime.now(timezone.utc))
+            
+            # Sensitive path name check
+            lower_val = val_str.lower()
+            sensitive = [".env", "wallet.json", "id_rsa", "mnemonic", "keystore", "secret"]
+            if any(s in lower_val for s in sensitive):
+                reason = f"Security Violation: Access to protected file pattern in argument '{key}'."
+                self.telemetry.record_execution(
+                    task_id=request.task_id, department=self.department,
+                    tool_name=tool_name, action=request.action,
+                    status="denied", risk_level=RiskLevel.CRITICAL.value,
+                    started_at=started, error=reason,
+                )
+                return ToolResult(task_id=request.task_id, tool_name=tool_name,
+                                  success=False, error=reason,
+                                  started_at=started, finished_at=datetime.now(timezone.utc))
+            
+            # Dangerous shell inject block
+            dangerous_patterns = ["rm -rf", "del /s", "format ", "mkfs", "eval(", "exec(", "os.system"]
+            if any(d in lower_val for d in dangerous_patterns):
+                reason = f"Security Violation: Blocklisted command pattern detected in argument '{key}'."
+                self.telemetry.record_execution(
+                    task_id=request.task_id, department=self.department,
+                    tool_name=tool_name, action=request.action,
+                    status="denied", risk_level=RiskLevel.CRITICAL.value,
+                    started_at=started, error=reason,
+                )
+                return ToolResult(task_id=request.task_id, tool_name=tool_name,
+                                  success=False, error=reason,
+                                  started_at=started, finished_at=datetime.now(timezone.utc))
+        
+        # 3. Call the MCP client
+        try:
+            resp = await client.call_tool(tool_name, args)
+            finished = datetime.now(timezone.utc)
+            if not resp or "error" in resp:
+                err_msg = resp.get("error", {}).get("message", "Unknown error") if resp else "Empty response"
+                self.telemetry.record_execution(
+                    task_id=request.task_id, department=self.department,
+                    tool_name=tool_name, action=request.action,
+                    status="error", risk_level=RiskLevel.LOW.value,
+                    started_at=started, finished_at=finished, error=err_msg,
+                )
+                return ToolResult(task_id=request.task_id, tool_name=tool_name,
+                                  success=False, error=err_msg,
+                                  started_at=started, finished_at=finished)
+            
+            result_data = resp.get("result", "")
+            self.telemetry.record_execution(
+                task_id=request.task_id, department=self.department,
+                tool_name=tool_name, action=request.action,
+                status="success", risk_level=RiskLevel.LOW.value,
+                started_at=started, finished_at=finished,
+            )
+            return ToolResult(task_id=request.task_id, tool_name=tool_name,
+                              success=True, stdout=str(result_data),
+                              started_at=started, finished_at=finished)
+        except Exception as e:
+            finished = datetime.now(timezone.utc)
+            self.telemetry.record_execution(
+                task_id=request.task_id, department=self.department,
+                tool_name=tool_name, action=request.action,
+                status="error", risk_level=RiskLevel.HIGH.value,
+                started_at=started, finished_at=finished, error=str(e),
+            )
+            return ToolResult(task_id=request.task_id, tool_name=tool_name,
+                              success=False, error=str(e),
+                              started_at=started, finished_at=finished)

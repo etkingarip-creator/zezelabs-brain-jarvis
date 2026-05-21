@@ -1,50 +1,29 @@
+import json
 import asyncio
-from typing import Optional, Dict
+from typing import Dict, Any
 
-try:
-    from mcp import ClientSession, StdioServerParameters
-    from mcp.client.stdio import stdio_client
-    _MCP_AVAILABLE = True
-except ImportError:
-    _MCP_AVAILABLE = False
-
-class MCPClientManager:
-    """
-    ZOM v4 MCP (Model Context Protocol) Baglanti Yoneticisi.
-    Ajanlarin dis dunyadaki MCP sunuculariyla (SQLite, GitHub vs.) konusmasini saglar.
-    """
-    def __init__(self):
-        self.active_servers = {}
-        if not _MCP_AVAILABLE:
-            print("[MCP] ⚠️ 'mcp' kutuphanesi bulunamadi. MCP baglantilari calismayacak.")
-
-    async def _connect_and_list_tools(self, command: str, args: list) -> list:
-        if not _MCP_AVAILABLE:
-            return []
-            
-        server_params = StdioServerParameters(command=command, args=args, env=None)
+class MCPClient:
+    def __init__(self, process):
+        self.process = process
+    
+    async def _send(self, method: str, params: Dict[str, Any] = None):
+        req = json.dumps({"method": method, "params": params or {}})
+        payload = req + "\n"
+        try:
+            self.process.stdin.write(payload.encode("utf-8"))
+        except TypeError:
+            self.process.stdin.write(payload)
+        await self.process.stdin.drain()
         
-        try:
-            async with stdio_client(server_params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    tools_result = await session.list_tools()
-                    return [
-                        {"name": t.name, "description": t.description, "inputSchema": t.inputSchema}
-                        for t in tools_result.tools
-                    ]
-        except Exception as e:
-            print(f"[MCP] ⚠️ Baglanti hatasi ({command}): {e}")
-            return []
-
-    def get_server_tools_sync(self, command: str, args: list) -> list:
-        """
-        Senkron (blocking) ajan thread'leri icin async MCP istemcisini calistirir.
-        """
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-        return loop.run_until_complete(self._connect_and_list_tools(command, args))
+        resp_line = await self.process.stdout.readline()
+        if not resp_line:
+            return None
+        if isinstance(resp_line, bytes):
+            resp_line = resp_line.decode("utf-8")
+        return json.loads(resp_line)
+    
+    async def list_tools(self):
+        return await self._send("tools/list")
+    
+    async def call_tool(self, name: str, arguments: Dict[str, Any]):
+        return await self._send("tools/call", {"name": name, "arguments": arguments})
