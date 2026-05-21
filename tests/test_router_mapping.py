@@ -38,11 +38,11 @@ class TestRouterMapping:
 
     def test_video_goes_to_media(self):
         agent, _ = route("youtube videosu hazırla")
-        assert agent == "media"
+        assert agent == "zeze_media"
 
     def test_seo_goes_to_media(self):
         agent, _ = route("SEO raporu çıkar")
-        assert agent == "media"
+        assert agent == "zeze_media"
 
     def test_education_goes_to_academy(self):
         agent, _ = route("egitim icerigi olustur")

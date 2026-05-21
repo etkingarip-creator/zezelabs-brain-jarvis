@@ -1,0 +1,33 @@
+department: media_factory
+queue: zeze_media_queue
+
+allowed_tools:
+  - file_read
+  - file_edit
+  - roi_record
+  - loop_record
+  - content_plan
+  - seo_plan
+  - video_script
+  - thumbnail_brief
+
+approval_required:
+  - external_publish
+  - youtube_upload
+  - social_post
+  - paid_ads_launch
+  - brand_asset_change
+
+forbidden_tools:
+  - live_trade
+  - withdrawal
+  - git_push
+  - deploy
+  - force_push
+  - external_publish_without_approval
+  - paid_ads_without_approval
+
+risk_limits:
+  external_publish: false
+  paid_ads: false
+  max_ad_spend_usd: 0

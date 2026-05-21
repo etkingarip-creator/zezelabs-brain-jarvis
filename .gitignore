@@ -38,3 +38,6 @@ crypto_trading/paper_state/
 
 # Zeze ARO dogfood reports
 zeze_aro/dogfood_reports/
+
+# Media Factory dogfood reports
+media_factory/dogfood_reports/

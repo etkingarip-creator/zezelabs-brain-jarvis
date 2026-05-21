@@ -64,7 +64,7 @@ class RouterAgent:
         # Media & Content (checked before broad terms)
         if any(w in desc for w in ["video", "resim", "tasarim", "medya", "icerik", "content",
                                     "thumbnail", "seo", "youtube", "script", "reel", "podcast"]):
-            return "media"
+            return "zeze_media"
         # Finance & Crypto (before academy to prevent "rapor" stealing budget tasks)
         if any(w in desc for w in ["finans", "kripto", "crypto", "borsa", "butce", "budget",
                                     "gelir", "gider", "binance", "btc", "eth", "fiyat", "takip"]):
