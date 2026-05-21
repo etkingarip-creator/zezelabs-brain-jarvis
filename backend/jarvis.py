@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 # 1. PATH & ZOM ENVIRONMENT (Unified Structure)
 _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _root not in sys.path: sys.path.insert(0, _root)
+os.environ["WORKSPACE_DIR"] = os.path.abspath(os.path.join(_root, "workspace"))
 
 # ── ZOM CORE IMPORTS (CLAUDE CODE PROTOCOL) ──
 from core.orchestrator.router_agent import RouterAgent

@@ -17,7 +17,8 @@ from .workspace_guard import WorkspaceGuard
 
 log = logging.getLogger("zom.clawde_kernel")
 
-WORKSPACE_ROOT = os.getenv("WORKSPACE_DIR", os.path.abspath("."))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+WORKSPACE_ROOT = os.getenv("WORKSPACE_DIR", os.path.join(project_root, "workspace"))
 
 
 class ClawdeOperatorKernel:
