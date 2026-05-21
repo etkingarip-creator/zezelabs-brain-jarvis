@@ -643,12 +643,66 @@ async def get_provider_status():
 async def get_guard_snapshot():
     return {"snapshot": "ZezeGuard is active", "frozen_departments": []}
 
+def _contains_path_traversal(task: str) -> bool:
+    """Detect path traversal attempts in a task string."""
+    # Match ../ or ..\ sequences indicating directory traversal
+    if re.search(r"\.\.[/\\]", task):
+        return True
+    # Match /.. or \.. sequences
+    if re.search(r"[/\\]\.\.", task):
+        return True
+    return False
+
+
 @app.post("/api/jarvis/task")
 async def post_task(req: TaskRequest):
-    if not brain:
-        return {"error": "Brain not ready"}
-    response = await brain.think(req.task)
-    return {"result": response, "dry_run": req.dry_run}
+    # Path traversal guard
+    if _contains_path_traversal(req.task):
+        log.warning(f"[SECURITY] Path traversal attempt blocked in task: {req.task[:80]}")
+        return {
+            "success": False,
+            "error": "Path traversal denied: task references paths outside the workspace",
+            "dry_run": req.dry_run,
+        }
+
+    # Hybrid provider orchestration
+    try:
+        from core.ai.provider_sync import ProviderSyncOrchestrator
+        workspace_dir = os.getenv("WORKSPACE_DIR", os.path.abspath("."))
+        orchestrator = ProviderSyncOrchestrator()
+        result = await orchestrator.run_hybrid_task(
+            req.task, metadata={"dry_run": req.dry_run, "workspace": workspace_dir}
+        )
+
+        provider_mode = os.getenv("ZOM_AI_MODE", "hybrid_deepseek_hermes")
+        hermes_status = result.get(
+            "hermes_status",
+            orchestrator.health_snapshot().get("hermes_status", "unknown"),
+        )
+        degraded = result.get("degraded_mode", False)
+
+        created_files: list = []
+        clawde_exec = result.get("clawde_execution", {})
+        if clawde_exec:
+            exec_result_text = clawde_exec.get("result", "")
+            if exec_result_text and exec_result_text.startswith("Written:"):
+                created_files.append(exec_result_text.replace("Written:", "").strip())
+
+        return {
+            "success": True,
+            "provider_mode": provider_mode,
+            "hermes_status": hermes_status,
+            "degraded_mode": degraded,
+            "created_files": created_files,
+            "dry_run": req.dry_run,
+            "result": result,
+        }
+    except Exception as exc:
+        log.error(f"[post_task] Orchestration error: {exc}")
+        if brain:
+            response = await brain.think(req.task)
+            return {"success": True, "result": response, "dry_run": req.dry_run}
+        return {"success": False, "error": str(exc), "dry_run": req.dry_run}
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
