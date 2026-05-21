@@ -14,7 +14,7 @@ def test_theme_loaded():
     from desktop.theme.colors import get_theme
     theme = get_theme()
     assert "background" in theme
-    assert theme["background"] == "#0d1117"
+    assert theme["background"] == "#0f172a"
 
 def test_sse_endpoint(client):
     response = client.get("/api/runtime/streamlogs")

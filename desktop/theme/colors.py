@@ -1,16 +1,17 @@
 import colorsys
 
-HSL_DARK = {
-    "background": "#0d1117",
-    "surface": "#161b22",
-    "primary": "#58a6ff",
+HSL_PREMIUM = {
+    "background": "#0f172a",      # slate-900
+    "surface": "#1e293b",         # slate-800
+    "primary": "#38bdf8",         # cyan-400
     "secondary": "#8b949e",
-    "success": "#3fb950",
-    "warning": "#d29922",
-    "error": "#f85149",
-    "text": "#c9d1d9",
-    "text_muted": "#8b949e",
-    "border": "#30363d",
+    "success": "#10b981",         # emerald-500
+    "warning": "#f59e0b",         # amber-500
+    "error": "#ef4444",           # rose-500
+    "text": "#e2e8f0",            # slate-200
+    "text_muted": "#94a3b8",      # slate-400
+    "border": "#334155",          # slate-700
+    "accent": "#06b6d4",          # cyan-500
 }
 
 def hsl_to_hex(h, s, l):
@@ -24,4 +25,4 @@ def hsl_to_hex(h, s, l):
     return f"#{int(round(r*255)):02x}{int(round(g*255)):02x}{int(round(b*255)):02x}"
 
 def get_theme():
-    return HSL_DARK
+    return HSL_PREMIUM
