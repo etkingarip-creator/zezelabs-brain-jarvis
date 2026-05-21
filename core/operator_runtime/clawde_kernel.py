@@ -331,3 +331,167 @@ class ClawdeOperatorKernel:
             return ToolResult(task_id=request.task_id, tool_name=tool_name,
                               success=False, error=str(e),
                               started_at=started, finished_at=finished)
+
+    # ── Clawde_Code Deeper Integration: Sandboxed Code Execution ─────────────
+    async def execute_code(self, code: str, timeout: int = 30) -> dict:
+        import asyncio
+        import base64
+        import os
+        import sys
+        import time
+        import uuid
+        import re
+        import psutil
+
+        # Security: Statically check for forbidden keywords/builtins
+        forbidden = ["import", "exec", "eval", "open", "compile"]
+        for word in forbidden:
+            if re.search(r'\b' + re.escape(word) + r'\b', code):
+                return {
+                    "success": False,
+                    "error": f"Security Violation: Forbidden keyword '{word}' detected.",
+                }
+        if "__import__" in code:
+            return {
+                "success": False,
+                "error": "Security Violation: Forbidden keyword '__import__' detected.",
+            }
+
+        # Setup sandbox script file in project scratch directory
+        scratch_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "scratch"))
+        os.makedirs(scratch_dir, exist_ok=True)
+        sandbox_id = str(uuid.uuid4())
+        sandbox_file = os.path.join(scratch_dir, f"sandbox_{sandbox_id}.py")
+
+        encoded_code = base64.b64encode(code.encode('utf-8')).decode('utf-8')
+
+        script_content = f"""# Safe sandbox runner
+import sys
+import base64
+
+# Pre-import allowed modules
+import os
+import json
+import pathlib
+import re
+import math
+import datetime
+import collections
+import itertools
+import functools
+import operator
+
+# Remove forbidden builtins from __builtins__
+safe_builtins = __builtins__
+if not isinstance(safe_builtins, dict):
+    safe_builtins = safe_builtins.__dict__
+
+clean_builtins = {{}}
+for k, v in safe_builtins.items():
+    if k not in ["open", "compile", "eval", "exec", "__import__"]:
+        clean_builtins[k] = v
+
+globals_dict = {{
+    "__builtins__": clean_builtins,
+    "os": os,
+    "sys": sys,
+    "json": json,
+    "pathlib": pathlib,
+    "re": re,
+    "math": math,
+    "datetime": datetime,
+    "collections": collections,
+    "itertools": itertools,
+    "functools": functools,
+    "operator": operator,
+}}
+
+encoded_code = "{encoded_code}"
+user_code = base64.b64decode(encoded_code).decode('utf-8')
+
+# Execute user code inside the safe context
+exec(user_code, globals_dict)
+"""
+
+        try:
+            with open(sandbox_file, "w", encoding="utf-8") as f:
+                f.write(script_content)
+
+            def run_process():
+                python_exe = sys.executable or "python"
+                proc = subprocess.Popen(
+                    [python_exe, sandbox_file],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+
+                p = None
+                try:
+                    p = psutil.Process(proc.pid)
+                except Exception:
+                    pass
+
+                start_time = time.time()
+                memory_limit = 50 * 1024 * 1024  # 50 MB to allow standard python startup
+
+                while proc.poll() is None:
+                    # Check timeout
+                    if time.time() - start_time > timeout:
+                        proc.kill()
+                        raise TimeoutError(f"Execution timeout after {timeout}s")
+
+                    # Check memory
+                    if p:
+                        try:
+                            mem_info = p.memory_info()
+                            if mem_info.rss > memory_limit:
+                                proc.kill()
+                                raise MemoryError("Memory limit of 10MB exceeded")
+                        except psutil.NoSuchProcess:
+                            break
+                        except (TimeoutError, MemoryError):
+                            raise
+                        except Exception:
+                            pass
+                    time.sleep(0.05)
+
+                stdout, stderr = proc.communicate()
+                return proc.returncode, stdout, stderr
+
+            returncode, stdout, stderr = await asyncio.to_thread(run_process)
+            success = (returncode == 0)
+            return {
+                "success": success,
+                "output": stdout,
+                "error": stderr if not success else "",
+                "result": None,
+            }
+
+        except TimeoutError as te:
+            return {
+                "success": False,
+                "error": str(te),
+            }
+        except MemoryError as me:
+            return {
+                "success": False,
+                "error": f"Security Violation: {str(me)}",
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+            }
+        finally:
+            try:
+                if os.path.exists(sandbox_file):
+                    os.remove(sandbox_file)
+            except Exception:
+                pass
+
+    async def execute_code_tool(self, request) -> dict:
+        args = getattr(request, "arguments", None) or getattr(request, "args", {})
+        code = args.get("code", "")
+        timeout = args.get("timeout", 30)
+        return await self.execute_code(code, timeout)
