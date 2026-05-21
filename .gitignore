@@ -41,3 +41,23 @@ zeze_aro/dogfood_reports/
 
 # Media Factory dogfood reports
 media_factory/dogfood_reports/
+
+# Local Git backups / trash
+OLD_GIT_BACKUP_DO_NOT_PUSH*/
+.git_trash_*/
+
+# Generated workspaces
+dev_workspace/
+dev_workspace/task_*/
+zeze_eng/dev_workspace/task_*/
+
+# Runtime logs
+logs/
+*.log
+backend/*.log
+
+# Department generated outputs
+app_factory/todo_saas/
+media_factory/dogfood_reports/
+zeze_aro/dogfood_reports/
+crypto_trading/paper_state/
