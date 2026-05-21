@@ -1,0 +1,15 @@
+department: zeze_aro
+queue: zeze_aro_queue
+allowed_tools:
+  - file_read
+  - file_edit
+  - roi_record
+  - loop_record
+approval_required:
+  - crm_write
+  - external_email_send
+forbidden_tools:
+  - live_trade
+  - withdrawal
+  - git_push
+  - deploy

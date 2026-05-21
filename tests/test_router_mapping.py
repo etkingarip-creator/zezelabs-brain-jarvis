@@ -66,11 +66,11 @@ class TestRouterMapping:
 
     def test_sales_goes_to_aro(self):
         agent, _ = route("satis kampanyasi planla")
-        assert agent == "aro"
+        assert agent == "zeze_aro"
 
     def test_marketing_goes_to_aro(self):
         agent, _ = route("marketing planı oluştur")
-        assert agent == "aro"
+        assert agent == "zeze_aro"
 
     def test_telegram_goes_to_telegram(self):
         agent, _ = route("telegram'a bildirim gönder")

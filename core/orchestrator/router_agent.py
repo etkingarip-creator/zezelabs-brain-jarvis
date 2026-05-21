@@ -78,9 +78,9 @@ class RouterAgent:
                                     "roadmap", "ezoterik", "mystic", "hedef", "goal"]):
             return "mystic"
         # ARO: Sales, Marketing, Outreach
-        if any(w in desc for w in ["satis", "sales", "pazarlama", "marketing", "musteri",
-                                    "client", "lead", "outreach", "teklif", "proposal", "kampanya"]):
-            return "aro"
+        if any(w in desc for w in ["satis", "sales", "pazarlama", "marketing", "musteri", "crm", "lead", "funnel",
+                                    "client", "outreach", "teklif", "proposal", "kampanya", "campaign", "ads", "pipeline"]):
+            return "zeze_aro"
         # Telegram & Notifications
         if any(w in desc for w in ["telegram", "bildirim", "notification", "mesaj", "bot"]):
             return "telegram"
