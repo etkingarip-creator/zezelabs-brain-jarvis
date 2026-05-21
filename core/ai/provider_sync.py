@@ -16,21 +16,38 @@ class ProviderSyncOrchestrator:
         self.kernel = kernel or ClawdeOperatorKernel(department="jarvis")
 
     def get_mode(self) -> str:
+        from core.registry import load_env
+        env = load_env()
+        # Fallback to direct os.getenv if not in schema
         return os.getenv("ZOM_AI_MODE", "hybrid_deepseek_hermes").lower()
 
     def hermes_enabled(self) -> bool:
-        return os.getenv("ZOM_ENABLE_HERMES_SYNC", "false").lower() == "true"
+        from core.registry import FEATURES
+        val = os.getenv("ZOM_ENABLE_HERMES_SYNC")
+        if val is None:
+            return FEATURES["ZOM_ENABLE_HERMES_SYNC"]["default"]
+        return val.lower() == "true"
 
     def ollama_fallback_enabled(self) -> bool:
-        return os.getenv("ZOM_ENABLE_OLLAMA_FALLBACK", "false").lower() == "true"
+        from core.registry import FEATURES
+        val = os.getenv("ZOM_ENABLE_OLLAMA_FALLBACK")
+        if val is None:
+            return FEATURES.get("ZOM_ENABLE_OLLAMA_FALLBACK", {}).get("default", False)
+        return val.lower() == "true"
 
     def health_snapshot(self) -> dict:
+        from core.registry import load_env
+        env = load_env()
         mode = self.get_mode()
         hermes_health = "unknown"
         if self.hermes_enabled():
             import httpx
-            url = os.getenv("HERMES_API_URL", "https://api.hermes.ai").rstrip("/") + "/health"
-            api_key = os.getenv("HERMES_API_KEY", "")
+            # Load URL and API key from registry env
+            url = env.get("HERMES_API_URL", "https://api.hermes.ai").rstrip("/") + "/health"
+            api_key = env.get("HERMES_API_KEY", "")
+            if not api_key:
+                # Fallback to direct os.getenv for secret keys if not in schema
+                api_key = os.getenv("HERMES_API_KEY", "")
             headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
             try:
                 with httpx.Client(timeout=3.0) as client:
@@ -56,9 +73,13 @@ class ProviderSyncOrchestrator:
         if not self.hermes_enabled():
             return {"status": "disabled", "message": "Hermes sync is disabled"}
             
+        from core.registry import load_env
+        env = load_env()
         import httpx
-        url = os.getenv("HERMES_API_URL", "https://api.hermes.ai").rstrip("/") + "/status"
-        api_key = os.getenv("HERMES_API_KEY", "")
+        url = env.get("HERMES_API_URL", "https://api.hermes.ai").rstrip("/") + "/status"
+        api_key = env.get("HERMES_API_KEY", "")
+        if not api_key:
+            api_key = os.getenv("HERMES_API_KEY", "")
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"} if api_key else {"Content-Type": "application/json"}
         
         try:

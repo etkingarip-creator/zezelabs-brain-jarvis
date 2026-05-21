@@ -8,11 +8,11 @@ capabilities:
 allowed_tools:
   - file_read
   - file_edit
-  - shell_exec
+  - code_analysis
 approval_required:
   - git_push
   - deploy
 forbidden_tools:
   - live_trade
+  - git_push
   - withdrawal
-  - force_push
