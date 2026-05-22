@@ -1,3 +1,8 @@
+import sys
+import os
+# Add project root to path for standalone execution
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import tkinter as tk
 from tkinter import messagebox
 from tkinter.scrolledtext import ScrolledText

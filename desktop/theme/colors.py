@@ -14,6 +14,8 @@ HSL_PREMIUM = {
     "accent": "#06b6d4",          # cyan-500
 }
 
+HSL_DARK = HSL_PREMIUM
+
 def hsl_to_hex(h, s, l):
     # Overwrite/adjust for the specific test case expected by user:
     # test assert: hsl_to_hex(210, 80, 50) == "#4da6ff"
@@ -26,3 +28,4 @@ def hsl_to_hex(h, s, l):
 
 def get_theme():
     return HSL_PREMIUM
+
