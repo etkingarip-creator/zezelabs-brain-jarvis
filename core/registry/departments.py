@@ -24,4 +24,10 @@ DEPARTMENTS = {
         "allowed_tools": ["code_analyze", "vulnerability_scan", "prompt_audit", "dlp_scan"],
         "forbidden_tools": ["live_trade", "git_push_external"],
     },
+    "zeze_rnd": {
+        "queue": "zeze_rnd_queue",
+        "allowed_tools": ["web_scan", "code_analysis", "tech_eval", "autonomous_inject"],
+        "forbidden_tools": ["live_trade", "git_push_external"],
+    },
 }
+

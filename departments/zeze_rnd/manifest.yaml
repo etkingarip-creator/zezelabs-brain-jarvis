@@ -1,0 +1,11 @@
+name: zeze_rnd
+role: teknoloji_avci
+allowed_tools:
+  - web_scan
+  - code_analysis
+  - tech_eval
+  - autonomous_inject
+forbidden_tools:
+  - live_trade
+  - git_push_external
+priority: high
