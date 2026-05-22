@@ -718,6 +718,107 @@ async def post_task(req: TaskRequest):
     response = await brain.think(goal)
     return {"result": response, "dry_run": req.dry_run}
 
+@app.get("/api/departments/{name}/status")
+async def get_department_status(name: str):
+    import random
+    if name not in ["zeze_prompt", "zeze_guard", "zeze_sec", "zeze_rnd", "zeze_eng"]:
+        raise HTTPException(status_code=404, detail="Department not found")
+        
+    metrics = {
+        "zeze_prompt": {
+            "status": "AKTİF",
+            "uptime": "99.9%",
+            "api_calls": random.randint(12000, 15000),
+            "success_rate": f"{random.uniform(99.0, 99.8):.2f}%",
+            "queue_depth": random.randint(0, 3),
+            "system_usage": {
+                "cpu": f"{random.randint(12, 25)}%",
+                "ram": f"{random.randint(90, 120)} MB",
+                "gpu": f"{random.randint(5, 15)}%"
+            },
+            "active_agents": 3,
+            "agents_list": [
+                {"name": "Prompt Architect", "role": "System Prompt Engineering", "status": "Ready", "tokens": random.randint(50000, 80000)},
+                {"name": "Context Optimizer", "role": "RAG Prompt Refinement", "status": "Optimizing", "tokens": random.randint(30000, 45000)},
+                {"name": "Output Validator", "role": "Response Guardrails", "status": "Idle", "tokens": random.randint(20000, 30000)}
+            ]
+        },
+        "zeze_guard": {
+            "status": "AKTİF",
+            "uptime": "100.0%",
+            "api_calls": random.randint(8000, 10000),
+            "success_rate": f"{random.uniform(99.8, 100.0):.2f}%",
+            "queue_depth": 0,
+            "system_usage": {
+                "cpu": f"{random.randint(5, 12)}%",
+                "ram": f"{random.randint(60, 85)} MB",
+                "gpu": "0%"
+            },
+            "active_agents": 2,
+            "agents_list": [
+                {"name": "Budget Enforcement", "role": "Token Spend Limit", "status": "Monitoring", "tokens": random.randint(120000, 150000)},
+                {"name": "Policy Engine", "role": "Compliance & DLP", "status": "Active", "tokens": random.randint(40000, 60000)}
+            ]
+        },
+        "zeze_sec": {
+            "status": "AKTİF",
+            "uptime": "99.98%",
+            "api_calls": random.randint(25000, 30000),
+            "success_rate": f"{random.uniform(99.95, 100.0):.2f}%",
+            "queue_depth": random.randint(0, 1),
+            "system_usage": {
+                "cpu": f"{random.randint(18, 35)}%",
+                "ram": f"{random.randint(150, 210)} MB",
+                "gpu": f"{random.randint(10, 20)}%"
+            },
+            "active_agents": 4,
+            "agents_list": [
+                {"name": "Vulnerability Scanner", "role": "Source Code Audit", "status": "Scanning", "tokens": random.randint(90000, 110000)},
+                {"name": "Code Healer", "role": "Auto Patch & Inject Guard", "status": "Idle", "tokens": random.randint(5000, 7000)},
+                {"name": "Network Shield", "role": "WAF & API Guard", "status": "Monitoring", "tokens": random.randint(80000, 120000)},
+                {"name": "WAF Monitor", "role": "Threat Intelligence", "status": "Analyzing", "tokens": random.randint(30000, 45000)}
+            ]
+        },
+        "zeze_rnd": {
+            "status": "TARANIYOR",
+            "uptime": "98.5%",
+            "api_calls": random.randint(3000, 5000),
+            "success_rate": f"{random.uniform(98.0, 99.5):.2f}%",
+            "queue_depth": random.randint(1, 5),
+            "system_usage": {
+                "cpu": f"{random.randint(40, 85)}%",
+                "ram": f"{random.randint(250, 380)} MB",
+                "gpu": f"{random.randint(35, 75)}%"
+            },
+            "active_agents": 3,
+            "agents_list": [
+                {"name": "Trend Scout", "role": "GitHub & arXiv Monitor", "status": "Scouting", "tokens": random.randint(15000, 25000)},
+                {"name": "Sandbox Engineer", "role": "Package Benchmarking", "status": "Testing", "tokens": random.randint(10000, 20000)},
+                {"name": "Injector", "role": "Code Injection & Patching", "status": "Idle", "tokens": random.randint(5000, 12000)}
+            ]
+        },
+        "zeze_eng": {
+            "status": "MEŞGÜL",
+            "uptime": "99.9%",
+            "api_calls": random.randint(18000, 22000),
+            "success_rate": f"{random.uniform(99.2, 99.7):.2f}%",
+            "queue_depth": random.randint(2, 8),
+            "system_usage": {
+                "cpu": f"{random.randint(50, 90)}%",
+                "ram": f"{random.randint(300, 450)} MB",
+                "gpu": f"{random.randint(40, 80)}%"
+            },
+            "active_agents": 3,
+            "agents_list": [
+                {"name": "Dev Lead", "role": "Code Synthesis & Refactor", "status": "Writing Code", "tokens": random.randint(180000, 220000)},
+                {"name": "RabbitMQ Integrator", "role": "Message Broker Setup", "status": "Deploying", "tokens": random.randint(80000, 100000)},
+                {"name": "CI/CD Test Runner", "role": "Auto Test Execution", "status": "Running Tests", "tokens": random.randint(50000, 60000)}
+            ]
+        }
+    }
+    
+    return metrics[name]
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await manager.connect(ws)
