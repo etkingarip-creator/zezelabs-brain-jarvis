@@ -46,8 +46,51 @@ class Orchestrator:
             self.task_retries[task_id] = attempt
             task_data["attempt"] = attempt
             
+            # 3-Layer Security Shield
+            import asyncio
+            from core.security.injection_warden import InjectionWarden
+            from core.security.code_healer import CodeHealer
+            from core.security.token_sanitizer import TokenSanitizer
+            
+            description = task_data.get("description", "")
+            
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+            # Layer 1: Semantic Wall (InjectionWarden)
+            warden = InjectionWarden()
+            warden_res = loop.run_until_complete(warden.analyze(description))
+            if not warden_res.get("safe", True):
+                self.logger.warning(f"🚨 Layer 1 Prompt Injection Blocked: {warden_res['threats']}")
+                task_data["status"] = "blocked"
+                task_data["security_breach"] = "injection_detected"
+                task_data["threats"] = warden_res["threats"]
+                self._shunt_to_dlq(task_data, "SECURITY_BREACH_INJECTION")
+                ch.basic_ack(delivery_tag=method.delivery_tag)
+                return
+                
+            # Layer 2: Static & Live Wall (CodeHealer)
+            healer = CodeHealer()
+            healer_res = loop.run_until_complete(healer.analyze(description))
+            if not healer_res.get("safe", True):
+                self.logger.warning(f"🚨 Layer 2 Code Vuln Auto-Patched: {healer_res['vulnerabilities']}")
+                if "patched_code" in healer_res:
+                    task_data["description"] = healer_res["patched_code"]
+                    description = healer_res["patched_code"]
+                    
+            # Layer 3: TokenSanitizer (DLP Secret scrubber)
+            sanitizer = TokenSanitizer()
+            sanitizer_res = loop.run_until_complete(sanitizer.sanitize(description))
+            if not sanitizer_res.get("safe", True):
+                self.logger.warning(f"🚨 Layer 3 DLP Leak Sanitized: {sanitizer_res['leaks']}")
+                if "sanitized" in sanitizer_res:
+                    task_data["description"] = sanitizer_res["sanitized"]
+                    description = sanitizer_res["sanitized"]
+            
             # ROUTING...
-            description = task_data.get("description", "").lower()
             target_queue = self._determine_agent_queue(description)
             
             if self.mq.publish(target_queue, task_data):
@@ -64,9 +107,12 @@ class Orchestrator:
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
     def _determine_agent_queue(self, description: str) -> str:
-        if any(w in description for w in ["kod", "yaz", "fix", "bug", "git", "dev"]): return "zeze_eng_queue"
-        if any(w in description for w in ["video", "resim", "tasarım", "medya"]): return "zeze_media_queue"
-        if any(w in description for w in ["eğitim", "öğren", "akademi"]): return "zeze_academy_queue"
+        desc_lower = description.lower()
+        if any(w in desc_lower for w in ["güvenlik", "security", "vuln", "scan", "healer", "warden", "sanitizer", "shield", "sec"]):
+            return "zeze_sec_queue"
+        if any(w in desc_lower for w in ["kod", "yaz", "fix", "bug", "git", "dev"]): return "zeze_eng_queue"
+        if any(w in desc_lower for w in ["video", "resim", "tasarım", "medya"]): return "zeze_media_queue"
+        if any(w in desc_lower for w in ["eğitim", "öğren", "akademi"]): return "zeze_academy_queue"
         return "zeze_general_queue"
 
     def _shunt_to_dlq(self, task_data, error):
@@ -122,6 +168,7 @@ class Orchestrator:
             "zeze_media_queue",
             "zeze_academy_queue",
             "zeze_general_queue",
+            "zeze_sec_queue",
             "zom_dead_letter_queue",
         ]
 
@@ -137,6 +184,7 @@ class Orchestrator:
             "zeze_media_queue",
             "zeze_academy_queue",
             "zeze_general_queue",
+            "zeze_sec_queue",
         ]
         for wq in worker_queues:
             self._start_worker_thread(wq)

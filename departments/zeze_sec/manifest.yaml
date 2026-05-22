@@ -1,0 +1,11 @@
+name: zeze_sec
+role: siber_guvenlik
+allowed_tools:
+  - code_analyze
+  - vulnerability_scan
+  - prompt_audit
+  - dlp_scan
+forbidden_tools:
+  - live_trade
+  - git_push_external
+priority: critical

@@ -19,4 +19,9 @@ DEPARTMENTS = {
         "allowed_tools": ["file_read", "file_edit", "shell_exec"],
         "forbidden_tools": ["live_trade", "withdrawal", "leverage"],
     },
+    "zeze_sec": {
+        "queue": "zeze_sec_queue",
+        "allowed_tools": ["code_analyze", "vulnerability_scan", "prompt_audit", "dlp_scan"],
+        "forbidden_tools": ["live_trade", "git_push_external"],
+    },
 }
