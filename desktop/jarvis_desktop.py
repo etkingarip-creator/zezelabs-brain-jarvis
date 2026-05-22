@@ -380,6 +380,57 @@ class JarvisDesktopApp:
         )
         self.task_btn.pack(fill=tk.X, pady=4)
         
+        # --- LIVE VOICE CHAT PANEL ---
+        voice_lbl = tk.Label(
+            btn_container, 
+            text="LIVE VOICE CHAT", 
+            font=("Segoe UI", 10, "bold"), 
+            bg=self.theme["surface"], 
+            fg=self.theme["primary"]
+        )
+        voice_lbl.pack(anchor="w", pady=(15, 5))
+        
+        voice_row = tk.Frame(btn_container, bg=self.theme["surface"])
+        voice_row.pack(fill=tk.X, pady=4)
+        
+        self.voice_active = False
+        self.speaker_active = True
+        
+        self.mic_btn = self.create_flat_button(
+            voice_row, 
+            text="🎤 Mic OFF", 
+            command=self.toggle_mic, 
+            bg=self.theme["border"], 
+            fg=self.theme["text"]
+        )
+        self.mic_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        
+        self.spk_btn = self.create_flat_button(
+            voice_row, 
+            text="🔊 Spk ON", 
+            command=self.toggle_speaker, 
+            bg=self.theme["border"], 
+            fg=self.theme["success"]
+        )
+        self.spk_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
+        
+        self.voice_card = tk.Frame(
+            btn_container,
+            bg=self.theme["background"],
+            highlightthickness=1,
+            highlightbackground=self.theme["border"]
+        )
+        self.voice_card.pack(fill=tk.X, pady=(5, 0))
+        
+        self.voice_indicator_lbl = tk.Label(
+            self.voice_card,
+            text="⚡ Sesli Sohbet Hattı Çevrimdışı",
+            font=("Segoe UI", 9, "bold"),
+            bg=self.theme["background"],
+            fg=self.theme["text_muted"]
+        )
+        self.voice_indicator_lbl.pack(fill=tk.X, padx=10, pady=8)
+        
         # --- RIGHT COLUMN ---
         right_frame = tk.Frame(
             main_container, 
@@ -698,7 +749,26 @@ class JarvisDesktopApp:
             self.response_viewer.delete("1.0", tk.END)
             self.response_viewer.insert(tk.END, "{\n  \"error\": \"" + str(e).replace('"', '\\"') + "\"\n}")
             self.response_viewer.config(state=tk.DISABLED)
-            messagebox.showerror("Error", str(e))
+
+    def toggle_mic(self):
+        self.voice_active = not self.voice_active
+        if self.voice_active:
+            self.mic_btn.config(text="🎤 Mic ACTIVE", fg=self.theme["background"], bg=self.theme["primary"])
+            self.voice_indicator_lbl.config(text="🔊 Ses Alınıyor (Dinlemede)", fg=self.theme["success"])
+            self.append_log("[INFO] Sesli iletişim hattı mikrofonu açıldı.")
+        else:
+            self.mic_btn.config(text="🎤 Mic OFF", fg=self.theme["text"], bg=self.theme["border"])
+            self.voice_indicator_lbl.config(text="⚡ Sesli Sohbet Hattı Çevrimdışı", fg=self.theme["text_muted"])
+            self.append_log("[INFO] Sesli iletişim hattı mikrofonu kapatıldı.")
+
+    def toggle_speaker(self):
+        self.speaker_active = not self.speaker_active
+        if self.speaker_active:
+            self.spk_btn.config(text="🔊 Spk ON", fg=self.theme["success"])
+            self.append_log("[INFO] Sesli iletişim hoparlörleri açıldı.")
+        else:
+            self.spk_btn.config(text="🔇 Spk OFF", fg=self.theme["error"])
+            self.append_log("[INFO] Sesli iletişim hoparlörleri sessize alındı.")
 
     def on_closing(self):
         if hasattr(self, 'sse_client'):

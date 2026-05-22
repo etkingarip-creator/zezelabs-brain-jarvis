@@ -60,6 +60,19 @@ class DeepSeekProvider:
         import asyncio
         return asyncio.run(self.complete_async(prompt, **kwargs))
     
+    async def stream_complete(self, prompt: str, **kwargs):
+        import asyncio
+        if self.mock or not self.api_key:
+            response = self._mock_response(prompt)
+            for word in response.split(" "):
+                yield word + " "
+                await asyncio.sleep(0.01)
+        else:
+            response = await self.complete_async(prompt, **kwargs)
+            for word in response.split(" "):
+                yield word + " "
+                await asyncio.sleep(0.01)
+    
     def _mock_response(self, prompt: str) -> str:
         return f"Mock response for: {prompt[:50]}..."
     
