@@ -13,3 +13,4 @@ mcp
 tiktoken
 google-generativeai
 flask
+PySide6>=6.5.0
