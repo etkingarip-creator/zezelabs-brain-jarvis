@@ -245,6 +245,14 @@ class JarvisDesktopApp:
         self.fin_mouse_x = None
         self.fin_mouse_y = None
         
+        # Right-Click Context Menu for Selection Copying
+        self.context_menu = tk.Menu(
+            self.root, tearoff=0, bg=self.theme["surface"], fg=self.theme["text"],
+            activebackground=self.theme["primary"], activeforeground=self.theme["background"],
+            font=("Segoe UI", 9)
+        )
+        self.context_menu.add_command(label="📋 Seçili Metni Kopyala", command=self.copy_selected_text)
+        
         # Build UI
         self.setup_main_layout()
         
@@ -386,7 +394,9 @@ class JarvisDesktopApp:
                     return lambda e: self.close_window()
                 return lambda e: messagebox.showinfo("Bilgi", f"'{name}' paneli yakında entegre edilecek!")
                 
-            btn_box.bind("<Button-1>", make_click_action(i))
+            action_cb = make_click_action(i)
+            btn_box.bind("<Button-1>", action_cb)
+            btn_box.tag_bind(text_id, "<Button-1>", action_cb)
             
             # Hover bindings
             def on_nav_enter(e, canvas=btn_box, t_id=text_id):
@@ -672,9 +682,12 @@ class JarvisDesktopApp:
         # Custom Scrolled Viewer styled to fit in
         self.activity_log_viewer = ScrolledText(
             self.act_list_frame, font=("Consolas", 9), bg=self.theme["background"], fg=self.theme["text"],
-            bd=0, highlightthickness=0, relief="flat", wrap=tk.WORD
+            bd=0, highlightthickness=0, relief="flat", wrap=tk.WORD,
+            selectbackground=self.theme["primary"], selectforeground=self.theme["background"]
         )
         self.activity_log_viewer.pack(fill=tk.BOTH, expand=True)
+        self.activity_log_viewer.bind("<Button-3>", self.show_context_menu)
+        self.activity_log_viewer.bind("<Button-2>", self.show_context_menu)
         self.activity_log_viewer.insert(tk.END, ">>> [SYSTEM_INIT] Çekirdek ağ geçidi dinleniyor...\n")
         self.activity_log_viewer.config(state=tk.DISABLED)
         
@@ -766,9 +779,12 @@ class JarvisDesktopApp:
         
         self.response_viewer = ScrolledText(
             resp_f, font=("Segoe UI", 9), bg=self.theme["background"], fg=self.theme["text"],
-            bd=0, highlightthickness=1, highlightbackground=self.theme["border"], relief="flat", wrap=tk.WORD
+            bd=0, highlightthickness=1, highlightbackground=self.theme["border"], relief="flat", wrap=tk.WORD,
+            selectbackground=self.theme["primary"], selectforeground=self.theme["background"]
         )
         self.response_viewer.pack(fill=tk.BOTH, expand=True)
+        self.response_viewer.bind("<Button-3>", self.show_context_menu)
+        self.response_viewer.bind("<Button-2>", self.show_context_menu)
         
         # Configure paragraph bubble tag layouts
         self.response_viewer.tag_configure("user_header", justify="right", foreground=self.theme["text_muted"], font=("Segoe UI", 8, "bold"), spacing1=6)
@@ -854,9 +870,12 @@ class JarvisDesktopApp:
         # 2. Large Chat History Viewer
         self.chat_history_viewer = ScrolledText(
             chat_left_f, font=("Segoe UI", 10), bg=self.theme["surface"], fg=self.theme["text"],
-            bd=0, highlightthickness=1, highlightbackground=self.theme["border"], relief="flat", wrap=tk.WORD
+            bd=0, highlightthickness=1, highlightbackground=self.theme["border"], relief="flat", wrap=tk.WORD,
+            selectbackground=self.theme["primary"], selectforeground=self.theme["background"]
         )
         self.chat_history_viewer.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        self.chat_history_viewer.bind("<Button-3>", self.show_context_menu)
+        self.chat_history_viewer.bind("<Button-2>", self.show_context_menu)
         
         # Tags for bubbles
         self.chat_history_viewer.tag_configure("user_header", justify="right", foreground=self.theme["text_muted"], font=("Segoe UI", 8, "bold"), spacing1=8)
@@ -920,16 +939,16 @@ class JarvisDesktopApp:
         for name, cmd_txt in commands:
             card = tk.Frame(
                 chat_right_f, bg=self.theme["surface"], bd=0, 
-                highlightthickness=1, highlightbackground=self.theme["border"]
+                highlightthickness=1, highlightbackground=self.theme["border"], cursor="hand2"
             )
             card.pack(fill=tk.X, pady=4)
             
-            lbl_name = tk.Label(card, text=name, font=("Segoe UI", 9, "bold"), bg=self.theme["surface"], fg=self.theme["text"])
+            lbl_name = tk.Label(card, text=name, font=("Segoe UI", 9, "bold"), bg=self.theme["surface"], fg=self.theme["text"], cursor="hand2")
             lbl_name.pack(anchor="w", padx=12, pady=(8, 2))
             
             lbl_desc = tk.Label(
                 card, text=cmd_txt[:45] + "...", font=("Segoe UI", 8), 
-                bg=self.theme["surface"], fg=self.theme["text_muted"], wrap=250, justify=tk.LEFT
+                bg=self.theme["surface"], fg=self.theme["text_muted"], wrap=250, justify=tk.LEFT, cursor="hand2"
             )
             lbl_desc.pack(anchor="w", padx=12, pady=(0, 8))
             
@@ -1064,6 +1083,27 @@ class JarvisDesktopApp:
         
         self.add_main_chat_message("system", f"Görev iletimi başarısız: {err_msg}")
         self.append_log(f"[ERROR] Görev iletimi başarısız: {err_msg}")
+
+    def show_context_menu(self, event):
+        widget = event.widget
+        try:
+            widget.selection_get()
+            self.context_menu.entryconfigure(0, state=tk.NORMAL)
+        except tk.TclError:
+            self.context_menu.entryconfigure(0, state=tk.DISABLED)
+            
+        self._last_focused_text_widget = widget
+        self.context_menu.post(event.x_root, event.y_root)
+
+    def copy_selected_text(self):
+        if hasattr(self, "_last_focused_text_widget"):
+            try:
+                selected_text = self._last_focused_text_widget.selection_get()
+                self.root.clipboard_clear()
+                self.root.clipboard_append(selected_text)
+                self.append_log("[INFO] Seçilen metin panoya kopyalandı.")
+            except tk.TclError:
+                pass
 
     def on_entry_focus_in(self, event):
         if self.input_entry.get() == "Jarvis'e görev ver":
