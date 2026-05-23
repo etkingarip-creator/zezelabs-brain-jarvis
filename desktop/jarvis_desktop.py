@@ -1,991 +1,1039 @@
 """
-╔══════════════════════════════════════════════════════════════════╗
-║          ZEZELABS SİBER KARARGAH — JARVIS v4.0 HQ               ║
-║          Isometric HQ + Neon Agent Orbs + Live Telemetry         ║
-╚══════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════╗
+║  ZEZELABS JARVIS v6.0 — QUANTUM COMMAND CENTER (SENARYO A)              ║
+║  NASA Mission Control + Bloomberg Terminal + SpaceX Dragon Cockpit       ║
+║  İzometrik HQ · Her Katın Görsel Dili · CEO Zoom · Sağlık Skoru         ║
+╚══════════════════════════════════════════════════════════════════════════╝
 """
-import sys
-import os
-import math
-import random
-import time
-import threading
-import json
-import httpx
+import sys, os, math, random, time, json
+from pathlib import Path
 
 from PySide6.QtCore import (
-    Qt, QTimer, QPoint, QPointF, QRectF, QSizeF, Signal, QObject,
-    QPropertyAnimation, QEasingCurve, QThread
+    Qt, QTimer, QPointF, QRectF, QSize, QRect,
+    Signal, QObject, QPropertyAnimation, QEasingCurve,
+    QSequentialAnimationGroup, Property
 )
 from PySide6.QtGui import (
-    QPainter, QColor, QPen, QBrush, QFont, QPainterPath,
-    QLinearGradient, QRadialGradient, QIcon, QPixmap,
-    QFontDatabase, QPalette
+    QPainter, QColor, QPen, QBrush, QFont, QFontDatabase,
+    QPainterPath, QLinearGradient, QRadialGradient,
+    QIcon, QKeySequence, QShortcut, QPalette, QTransform
 )
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QFrame, QLabel, QPushButton, QLineEdit, QScrollArea,
-    QSplitter, QProgressBar, QSystemTrayIcon, QMenu, QSizePolicy,
-    QGraphicsDropShadowEffect, QTextEdit
+    QFrame, QLabel, QPushButton, QLineEdit, QTextEdit,
+    QScrollArea, QSizePolicy, QSystemTrayIcon, QMenu,
+    QGraphicsDropShadowEffect, QDialog, QListWidget, QListWidgetItem,
+    QProgressBar, QSplitter
 )
 
-# ═══════════════════════════════════════════════════════════════
-# THEME — ZEZELABS SIBER KARARGAH PALETTE
-# ═══════════════════════════════════════════════════════════════
-COLORS = {
-    "bg_deep":      "#03050f",
-    "bg_dark":      "#070d1a",
-    "bg_card":      "#0a1628",
-    "border":       "#0f2044",
-    "border_glow":  "#00f2fe",
-    "neon_cyan":    "#00f2fe",
-    "neon_pink":    "#ff007f",
-    "neon_purple":  "#7928ca",
-    "neon_green":   "#00ff9f",
-    "neon_gold":    "#ffd700",
-    "neon_orange":  "#ff6600",
-    "text":         "#e2e8f0",
-    "text_dim":     "#4a6080",
-    "text_bright":  "#ffffff",
+# ═══════════════════════════════════════════════════════════════════
+# DESIGN SYSTEM
+# ═══════════════════════════════════════════════════════════════════
+C = {
+    "bg0": "#040609",  "bg1": "#07090f",  "bg2": "#0b0f1c",
+    "bg3": "#0f1526",  "bg4": "#141d33",
+    "b0":  "#111827",  "b1":  "#1f2d47",  "b2":  "#2d4163",
+    "t1":  "#f0f4ff",  "t2":  "#8fa3c4",  "t3":  "#3d5275",
+    "ok":  "#22d3a6",  "warn":"#f59e0b",  "err": "#f43f5e",
+    "acc": "#4f8ef7",
 }
 
-DEPARTMENTS = [
-    {"id": "ceo",       "name": "CEO",         "floor": 7, "color": "#ffd700", "icon": "👑", "agents": 1},
-    {"id": "strategy",  "name": "STRATEJİ",    "floor": 6, "color": "#00f2fe", "icon": "🎯", "agents": 3},
-    {"id": "eng",       "name": "MÜHENDİSLİK", "floor": 5, "color": "#7928ca", "icon": "⚙️", "agents": 5},
-    {"id": "fin",       "name": "FİNANS",       "floor": 4, "color": "#00ff9f", "icon": "💰", "agents": 3},
-    {"id": "marketing", "name": "PAZARLAMA",    "floor": 3, "color": "#ff007f", "icon": "📡", "agents": 4},
-    {"id": "sales",     "name": "SATIŞ",        "floor": 2, "color": "#ff6600", "icon": "🚀", "agents": 3},
-    {"id": "ops",       "name": "OPERASYON",    "floor": 1, "color": "#00f2fe", "icon": "🔧", "agents": 2},
+# Her departman — renk, kat başlığı, ikon, görsel tema kodu
+FLOORS = [
+    {"id":"ceo",      "name":"CEO",          "icon":"👑", "color":"#f59e0b", "theme":"penthouse",  "health":97, "agents":1,  "floor":6},
+    {"id":"strategy", "name":"Strateji",     "icon":"🎯", "color":"#4f8ef7", "theme":"radar",      "health":88, "agents":3,  "floor":5},
+    {"id":"eng",      "name":"Mühendislik",  "icon":"⚙️", "color":"#8b5cf6", "theme":"server",     "health":92, "agents":5,  "floor":4},
+    {"id":"fin",      "name":"Finans",       "icon":"💰", "color":"#22d3a6", "theme":"matrix",     "health":79, "agents":3,  "floor":3},
+    {"id":"marketing","name":"Pazarlama",    "icon":"📡", "color":"#ec4899", "theme":"media",      "health":85, "agents":4,  "floor":2},
+    {"id":"sales",    "name":"Satış",        "icon":"🚀", "color":"#f97316", "theme":"pipeline",   "health":91, "agents":3,  "floor":1},
+    {"id":"ops",      "name":"Operasyon",    "icon":"🔧", "color":"#06b6d4", "theme":"machine",    "health":83, "agents":2,  "floor":0},
 ]
 
-# ═══════════════════════════════════════════════════════════════
-# ISOMETRIC HQ CANVAS
-# ═══════════════════════════════════════════════════════════════
-class IsometricHQWidget(QWidget):
-    department_clicked = Signal(dict)
+AGENT_TASKS = [
+    "Q3 raporu analiz ediliyor",  "Pazar araştırması",
+    "Kod optimizasyonu",          "Müşteri segmentasyonu",
+    "Strateji belgesi hazırlanıyor","Veritabanı sorgusu",
+    "API entegrasyon testi",      "Satış pipeline analizi",
+    "Sosyal medya içeriği",       "Risk değerlendirmesi",
+    "Bütçe optimizasyonu",        "Trend analizi",
+]
 
+def health_color(h):
+    if h >= 90: return "#22d3a6"
+    if h >= 70: return "#f59e0b"
+    return "#f43f5e"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# AGENT MODEL
+# ═══════════════════════════════════════════════════════════════════
+class Agent:
+    def __init__(self, floor_data):
+        self.floor_id = floor_data["id"]
+        self.color    = floor_data["color"]
+        self.name     = random.choice(["Argos","Nexus","Cipher","Vector","Pulse",
+                                       "Orion","Echo","Titan","Nova","Quill"])
+        self.task     = random.choice(AGENT_TASKS)
+        self.progress = random.uniform(10, 95)
+        self.tokens   = random.randint(300, 3800)
+        self.status   = random.choice(["AKTİF","AKTİF","AKTİF","BEKLIYOR"])
+        self.uptime   = random.randint(60, 7200)
+        # Orbital position on the floor
+        self.orbit_r  = random.uniform(28, 48)
+        self.orbit_phase = random.uniform(0, math.tau)
+        self.orbit_speed = random.uniform(0.015, 0.035)
+        self.orb_size = random.uniform(5, 9)
+        self.trail    = []          # last N screen positions
+        self.pulse    = random.uniform(0, math.tau)
+        self.glow_r   = random.uniform(0, math.tau)
+
+    def tick(self):
+        self.orbit_phase += self.orbit_speed
+        self.pulse       += 0.07
+        self.glow_r      += 0.05
+        self.uptime      += 1
+        if self.status == "AKTİF":
+            self.progress = min(100, self.progress + random.uniform(0, 0.4))
+            self.tokens   = min(4096, self.tokens + random.randint(0, 8))
+
+    @property
+    def status_color(self):
+        return C["ok"] if self.status == "AKTİF" else C["warn"]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ISOMETRIC HQ CANVAS — THE CENTERPIECE
+# ═══════════════════════════════════════════════════════════════════
+class IsometricHQ(QWidget):
+    floor_selected = Signal(dict)
+
+    # Camera zoom target (0.0 = full view, 1.0 = zoomed to selected floor)
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(480, 600)
+        self.setMinimumSize(520, 680)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
 
-        self.hovered_floor = -1
-        self.selected_floor = -1
-        self.tick = 0.0
-        self.agents = []           # list of AnimAgent
-        self.floor_pulses = {}     # floor_index → pulse_phase
+        self.floors  = FLOORS
+        self.agents  = []
+        for fl in self.floors:
+            for _ in range(fl["agents"]):
+                self.agents.append(Agent(fl))
 
-        self._init_agents()
+        self.hovered = None
+        self.selected_id = None
+        self._zoom   = 1.0          # 1.0 = normal, <1 = zoomed in on floor
+        self._zoom_floor_y = 0.5   # normalized vertical center for zoom
+        self._anim_tick = 0.0
 
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._tick)
-        self.timer.start(30)  # ~33 fps
+        # Floor-specific animation states
+        self._matrix_chars = [[random.choice("01アイウ") for _ in range(8)] for _ in range(7)]
+        self._matrix_y     = [random.uniform(0, 1) for _ in range(7)]
+        self._server_blink = [random.random() for _ in range(20)]
+        self._ticker_offset = 0.0
 
-    def _init_agents(self):
-        self.agents = []
-        for dept in DEPARTMENTS:
-            for i in range(dept["agents"]):
-                self.agents.append({
-                    "dept": dept,
-                    "phase": random.uniform(0, math.tau),
-                    "speed": random.uniform(0.02, 0.05),
-                    "size": random.uniform(5, 9),
-                    "pulse": random.uniform(0, math.tau),
-                })
-        for i, dept in enumerate(DEPARTMENTS):
-            self.floor_pulses[i] = random.uniform(0, math.tau)
+        timer = QTimer(self)
+        timer.timeout.connect(self._tick)
+        timer.start(30)
 
-    def _tick(self):
-        self.tick += 0.04
-        for ag in self.agents:
-            ag["phase"] += ag["speed"]
-            ag["pulse"] += 0.08
-        for k in self.floor_pulses:
-            self.floor_pulses[k] += 0.03
-        self.update()
+    # ── Isometric math ─────────────────────────────────────────────
+    def _origin(self):
+        return QPointF(self.width() / 2, self.height() * 0.12)
 
-    # ── Isometric helpers ────────────────────────────────────────
-    def _iso_origin(self):
-        w, h = self.width(), self.height()
-        return QPointF(w / 2, h * 0.18)
-
-    def _to_screen(self, gx, gy, gz, tile_w=54, tile_h=28, floor_h=36):
-        ox, oy = self._iso_origin().x(), self._iso_origin().y()
-        sx = ox + (gx - gy) * (tile_w / 2)
-        sy = oy + (gx + gy) * (tile_h / 2) - gz * floor_h
+    def _iso(self, gx, gy, gz, tw=64, th=34, fh=44):
+        ox, oy = self._origin().x(), self._origin().y()
+        sx = ox + (gx - gy) * (tw / 2)
+        sy = oy + (gx + gy) * (th / 2) - gz * fh
         return QPointF(sx, sy)
 
-    # ── Draw one isometric floor slab ───────────────────────────
-    def _draw_floor(self, painter, floor_idx, dept):
-        gz = floor_idx  # z = floor number
-        tw, th = 54, 28
-        fh = 36
-        n_floors = len(DEPARTMENTS)
+    def _floor_polygon(self, floor_z, W=3):
+        """Returns the 4 corners of a floor's top face."""
+        tl = self._iso(0, 0, floor_z + 1)
+        tr = self._iso(W, 0, floor_z + 1)
+        br = self._iso(W, W, floor_z + 1)
+        bl = self._iso(0, W, floor_z + 1)
+        return tl, tr, br, bl
 
-        color = QColor(dept["color"])
-        is_hov = (self.hovered_floor == floor_idx)
-        is_sel = (self.selected_floor == floor_idx)
-        pulse = abs(math.sin(self.floor_pulses[floor_idx]))
+    def _floor_center(self, floor_z):
+        tl, tr, br, bl = self._floor_polygon(floor_z)
+        return QPointF((tl.x()+tr.x()+br.x()+bl.x())/4,
+                       (tl.y()+tr.y()+br.y()+bl.y())/4)
 
-        alpha_top = int(200 + 40 * pulse) if (is_hov or is_sel) else int(140 + 30 * pulse)
-        alpha_side = int(120 + 20 * pulse) if (is_hov or is_sel) else int(80 + 15 * pulse)
+    # ── Animation tick ──────────────────────────────────────────────
+    def _tick(self):
+        self._anim_tick += 0.035
+        self._ticker_offset += 0.8
+        for i in range(len(self._server_blink)):
+            if random.random() < 0.05:
+                self._server_blink[i] = random.random()
+        for ag in self.agents:
+            ag.tick()
+            # Compute screen pos and append to trail
+            fl_idx = next((i for i, f in enumerate(self.floors) if f["id"] == ag.floor_id), 0)
+            cx, cy = self._floor_center(fl_idx).x(), self._floor_center(fl_idx).y()
+            sx = cx + ag.orbit_r * math.cos(ag.orbit_phase)
+            sy = cy + ag.orbit_r * math.sin(ag.orbit_phase) * 0.45
+            ag.trail.append(QPointF(sx, sy))
+            if len(ag.trail) > 14:
+                ag.trail.pop(0)
+        # Matrix rain
+        for i in range(7):
+            self._matrix_y[i] += 0.008
+            if self._matrix_y[i] > 1.0:
+                self._matrix_y[i] = 0.0
+                self._matrix_chars[i] = [random.choice("01アイウエオカキクサシスセソタチ") for _ in range(8)]
+        self.update()
 
-        # Building block is 3×3 iso tiles wide
+    # ── Per-floor visual themes ─────────────────────────────────────
+    def _draw_floor_detail(self, painter, fl, fl_idx, tl, tr, br, bl):
+        theme = fl["theme"]
+        cx = (tl.x()+tr.x()+br.x()+bl.x())/4
+        cy = (tl.y()+tr.y()+br.y()+bl.y())/4
+        w  = abs(tr.x() - tl.x()) * 0.7
+        h  = abs(bl.y() - tl.y()) * 0.7
+
+        if theme == "penthouse":
+            # Gold shimmer + glass reflection lines
+            painter.setPen(QPen(QColor("#f59e0b"), 0.8))
+            for i in range(3):
+                ox = cx - w*0.3 + i * w*0.3
+                painter.drawLine(QPointF(ox, cy - h*0.3), QPointF(ox + w*0.2, cy + h*0.2))
+            painter.setPen(QPen(QColor("#ffffff"), 0.5))
+            painter.drawLine(QPointF(cx - w*0.3, cy), QPointF(cx + w*0.3, cy))
+
+        elif theme == "radar":
+            # Rotating radar sweep
+            r = min(w, h) * 0.35
+            angle = (self._anim_tick * 2) % math.tau
+            painter.setPen(QPen(QColor("#4f8ef740"), 0.5))
+            painter.drawEllipse(QPointF(cx, cy), r, r * 0.4)
+            painter.setPen(QPen(QColor("#4f8ef7"), 1.2))
+            painter.drawLine(QPointF(cx, cy),
+                             QPointF(cx + r * math.cos(angle),
+                                     cy + r * 0.4 * math.sin(angle)))
+
+        elif theme == "server":
+            # Blinking server rack LEDs
+            painter.setPen(Qt.PenStyle.NoPen)
+            for i, blink in enumerate(self._server_blink[:8]):
+                lx = cx - w*0.3 + (i % 4) * w*0.18
+                ly = cy - h*0.15 + (i // 4) * h*0.25
+                led_col = QColor("#22d3a6") if blink > 0.3 else QColor("#8b5cf6")
+                led_col.setAlpha(int(180 + 75 * math.sin(self._anim_tick + i)))
+                painter.setBrush(led_col)
+                painter.drawEllipse(QPointF(lx, ly), 2, 2)
+
+        elif theme == "matrix":
+            # Matrix rain characters
+            painter.setFont(QFont("Consolas", 5))
+            for i, chars in enumerate(self._matrix_chars[:4]):
+                for j, ch in enumerate(chars[:3]):
+                    alpha = max(0, int(255 * (1 - abs(self._matrix_y[i] - j/3))))
+                    col = QColor("#22d3a6")
+                    col.setAlpha(alpha)
+                    painter.setPen(col)
+                    px = cx - w*0.3 + i * w*0.22
+                    py = cy - h*0.3 + j * h*0.25
+                    painter.drawText(QPointF(px, py), ch)
+
+        elif theme == "media":
+            # Animated signal bars
+            painter.setPen(Qt.PenStyle.NoPen)
+            for i in range(5):
+                bar_h = (0.3 + 0.7 * abs(math.sin(self._anim_tick * 1.5 + i))) * h * 0.5
+                bar_x = cx - w*0.3 + i * w*0.15
+                col = QColor("#ec4899")
+                col.setAlpha(160)
+                painter.setBrush(col)
+                painter.drawRect(QRectF(bar_x, cy - bar_h/2, w*0.1, bar_h))
+
+        elif theme == "pipeline":
+            # Flowing deal orbs along a pipe
+            painter.setPen(QPen(QColor("#f9731660"), 0.7))
+            painter.drawLine(QPointF(cx - w*0.4, cy), QPointF(cx + w*0.4, cy))
+            for i in range(3):
+                t = ((self._anim_tick * 0.5 + i * 0.33) % 1.0)
+                ox = cx - w*0.4 + t * w*0.8
+                col = QColor("#f97316")
+                col.setAlpha(int(200 * abs(math.sin(self._anim_tick + i))))
+                painter.setBrush(col)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawEllipse(QPointF(ox, cy), 4, 4)
+
+        elif theme == "machine":
+            # Rotating fan blades
+            painter.setPen(QPen(QColor("#06b6d4"), 0.8))
+            for blade in range(4):
+                angle = self._anim_tick * 3 + blade * math.pi/2
+                painter.drawLine(
+                    QPointF(cx, cy),
+                    QPointF(cx + 14 * math.cos(angle), cy + 8 * math.sin(angle))
+                )
+
+    # ── Draw one floor slab ─────────────────────────────────────────
+    def _draw_floor(self, painter, fl_idx, fl):
         W = 3
+        gz = fl_idx
+        tl, tr, br, bl = self._floor_polygon(gz)
+        bbl_tl = self._iso(0, 0, gz)
+        bbl_tr = self._iso(W, 0, gz)
+        bbl_br = self._iso(W, W, gz)
+        bbl_bl = self._iso(0, W, gz)
 
-        # Top face corners
-        top_tl = self._to_screen(0,   0,   gz + 1)
-        top_tr = self._to_screen(W,   0,   gz + 1)
-        top_br = self._to_screen(W,   W,   gz + 1)
-        top_bl = self._to_screen(0,   W,   gz + 1)
+        color   = QColor(fl["color"])
+        is_sel  = fl["id"] == self.selected_id
+        is_hov  = fl["id"] == self.hovered
+        h_score = fl["health"]
+        h_col   = QColor(health_color(h_score))
+        pulse   = abs(math.sin(self._anim_tick * 1.5 + fl_idx))
 
-        # Bottom face at gz
-        bot_tl = self._to_screen(0,   0,   gz)
-        bot_tr = self._to_screen(W,   0,   gz)
-        bot_br = self._to_screen(W,   W,   gz)
-        bot_bl = self._to_screen(0,   W,   gz)
+        # Intensity
+        intensity = 1.4 if is_sel else (1.1 if is_hov else 1.0)
 
-        # ── Left face ──
-        left_face = QPainterPath()
-        left_face.moveTo(top_tl)
-        left_face.lineTo(top_bl)
-        left_face.lineTo(bot_bl)
-        left_face.lineTo(bot_tl)
-        left_face.closeSubpath()
-        lc = QColor(dept["color"])
-        lc.setAlpha(alpha_side)
-        painter.fillPath(left_face, lc)
+        # ── Left face
+        lf = QPainterPath()
+        lf.moveTo(tl); lf.lineTo(bl); lf.lineTo(bbl_bl); lf.lineTo(bbl_tl); lf.closeSubpath()
+        lc = QColor(fl["color"]); lc.setAlpha(int(80 * intensity + 15 * pulse))
+        painter.fillPath(lf, lc)
 
-        # ── Right face ──
-        right_face = QPainterPath()
-        right_face.moveTo(top_tr)
-        right_face.lineTo(top_br)
-        right_face.lineTo(bot_br)
-        right_face.lineTo(bot_tr)
-        right_face.closeSubpath()
-        rc = QColor(dept["color"])
-        rc.setAlpha(int(alpha_side * 0.6))
-        painter.fillPath(right_face, rc)
+        # ── Right face
+        rf = QPainterPath()
+        rf.moveTo(tr); rf.lineTo(br); rf.lineTo(bbl_br); rf.lineTo(bbl_tr); rf.closeSubpath()
+        rc = QColor(fl["color"]); rc.setAlpha(int(55 * intensity + 10 * pulse))
+        painter.fillPath(rf, rc)
 
-        # ── Top face ──
-        top_face = QPainterPath()
-        top_face.moveTo(top_tl)
-        top_face.lineTo(top_tr)
-        top_face.lineTo(top_br)
-        top_face.lineTo(top_bl)
-        top_face.closeSubpath()
+        # ── Top face (with gradient)
+        top = QPainterPath()
+        top.moveTo(tl); top.lineTo(tr); top.lineTo(br); top.lineTo(bl); top.closeSubpath()
+        grad = QLinearGradient(tl, br)
+        tc1 = QColor(fl["color"]); tc1.setAlpha(int(170 * intensity + 30 * pulse))
+        tc2 = QColor(fl["color"]); tc2.setAlpha(int(90 * intensity))
+        grad.setColorAt(0, tc1); grad.setColorAt(1, tc2)
+        painter.fillPath(top, grad)
 
-        grad = QLinearGradient(top_tl, top_br)
-        tc = QColor(dept["color"])
-        tc.setAlpha(alpha_top)
-        tc2 = QColor(dept["color"])
-        tc2.setAlpha(int(alpha_top * 0.5))
-        grad.setColorAt(0, tc)
-        grad.setColorAt(1, tc2)
-        painter.fillPath(top_face, grad)
+        # ── Health score border on top
+        pen_width = 2.0 if is_sel else (1.2 if is_hov else 0.7)
+        border_col = h_col if is_sel else QColor(fl["color"])
+        border_col.setAlpha(int(200 * intensity))
+        painter.setPen(QPen(border_col, pen_width))
+        painter.drawPath(top)
+        painter.drawPath(lf)
+        painter.drawPath(rf)
 
-        # ── Glow border ──
-        glow_color = QColor(dept["color"])
-        glow_color.setAlpha(200 if (is_hov or is_sel) else 100)
-        pen = QPen(glow_color, 1.5 if (is_hov or is_sel) else 0.8)
-        painter.setPen(pen)
-        painter.drawPath(top_face)
-        painter.drawPath(left_face)
-        painter.drawPath(right_face)
+        # ── Floor-specific visual detail on top face
+        painter.save()
+        self._draw_floor_detail(painter, fl, fl_idx, tl, tr, br, bl)
+        painter.restore()
 
-        # ── Department label on top face ──
-        center_x = (top_tl.x() + top_tr.x() + top_br.x() + top_bl.x()) / 4
-        center_y = (top_tl.y() + top_tr.y() + top_br.y() + top_bl.y()) / 4
-
-        painter.setPen(QColor(COLORS["text_bright"]))
-        font = QFont("Segoe UI", 7, QFont.Weight.Bold)
+        # ── Label on top face
+        cx = (tl.x()+tr.x()+br.x()+bl.x())/4
+        cy = (tl.y()+tr.y()+br.y()+bl.y())/4
+        painter.setPen(QColor(C["t1"]) if is_sel else QColor(C["t2"]))
+        font = QFont("Segoe UI", 7 if not is_sel else 8,
+                     QFont.Weight.Bold if is_sel else QFont.Weight.Normal)
         painter.setFont(font)
-        label = f"{dept['icon']} {dept['name']}"
-        painter.drawText(QPointF(center_x - 30, center_y + 4), label)
+        painter.drawText(QPointF(cx - 28, cy + 4), f"{fl['icon']} {fl['name']}")
 
-        return top_face  # for hit testing
-
-    # ── Draw neon agent orb on a floor ──────────────────────────
-    def _draw_agent(self, painter, ag, floor_idx):
-        dept = ag["dept"]
-        dept_floor = dept["floor"] - 1  # 0-indexed
-
-        # Orbit center: top face center
-        gz = dept_floor + 1
-        W = 3
-        top_tl = self._to_screen(0, 0, gz)
-        top_tr = self._to_screen(W, 0, gz)
-        top_br = self._to_screen(W, W, gz)
-        top_bl = self._to_screen(0, W, gz)
-        cx = (top_tl.x() + top_tr.x() + top_br.x() + top_bl.x()) / 4
-        cy = (top_tl.y() + top_tr.y() + top_br.y() + top_bl.y()) / 4
-
-        # Orbit the top of the floor slightly
-        r = 22 + ag["size"]
-        ox = cx + r * math.cos(ag["phase"])
-        oy = cy + r * math.sin(ag["phase"]) * 0.45  # iso squash
-
-        # Pulse glow
-        glow_r = ag["size"] + 4 * abs(math.sin(ag["pulse"]))
-
-        color = QColor(dept["color"])
-
-        # Outer glow
-        glow = QRadialGradient(ox, oy, glow_r * 2.5)
-        gc = QColor(dept["color"])
-        gc.setAlpha(60)
-        glow.setColorAt(0, gc)
-        glow.setColorAt(1, QColor(0, 0, 0, 0))
-        painter.setBrush(glow)
+        # ── Health bar (tiny, on left face)
+        bar_x  = bbl_tl.x() + 4
+        bar_y  = (bbl_tl.y() + tl.y()) / 2
+        bar_w  = 22
+        bar_h  = 4
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(QPointF(ox, oy), glow_r * 2.5, glow_r * 2.5)
+        painter.setBrush(QColor("#ffffff20"))
+        painter.drawRoundedRect(QRectF(bar_x, bar_y - 2, bar_w, bar_h), 2, 2)
+        painter.setBrush(h_col)
+        painter.drawRoundedRect(QRectF(bar_x, bar_y - 2, bar_w * h_score / 100, bar_h), 2, 2)
 
-        # Core orb
-        core = QRadialGradient(ox - ag["size"] * 0.3, oy - ag["size"] * 0.3, ag["size"])
-        core.setColorAt(0, QColor(255, 255, 255, 220))
-        core.setColorAt(0.5, color)
-        core.setColorAt(1, QColor(dept["color"]).darker(180))
+        return top  # for hit testing
+
+    # ── Draw agent orb with trail ───────────────────────────────────
+    def _draw_agent(self, painter, ag):
+        fl_idx = next((i for i, f in enumerate(self.floors) if f["id"] == ag.floor_id), 0)
+        cx, cy = self._floor_center(fl_idx).x(), self._floor_center(fl_idx).y()
+        sx = cx + ag.orbit_r * math.cos(ag.orbit_phase)
+        sy = cy + ag.orbit_r * math.sin(ag.orbit_phase) * 0.45
+
+        # Trail
+        for i, tp in enumerate(ag.trail):
+            alpha = int(120 * (i / len(ag.trail)) ** 1.8)
+            r = ag.orb_size * 0.4 * (i / len(ag.trail))
+            tc = QColor(ag.color); tc.setAlpha(alpha)
+            painter.setBrush(tc); painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(tp, r, r)
+
+        # Glow
+        pf = abs(math.sin(ag.pulse))
+        glow_r = ag.orb_size + 7 * pf
+        glow = QRadialGradient(sx, sy, glow_r * 2.5)
+        gc = QColor(ag.color); gc.setAlpha(int(55 * pf))
+        glow.setColorAt(0, gc); glow.setColorAt(1, QColor(0,0,0,0))
+        painter.setBrush(glow); painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(QPointF(sx, sy), glow_r * 2.5, glow_r * 2.5)
+
+        # Core
+        r = ag.orb_size
+        core = QRadialGradient(sx - r*0.35, sy - r*0.35, r)
+        core.setColorAt(0, QColor(255,255,255,230))
+        core.setColorAt(0.5, QColor(ag.color))
+        core.setColorAt(1, QColor(ag.color).darker(200))
         painter.setBrush(core)
-        painter.drawEllipse(QPointF(ox, oy), ag["size"], ag["size"])
+        painter.setPen(QPen(QColor(ag.color).lighter(160), 0.5))
+        painter.drawEllipse(QPointF(sx, sy), r, r)
 
-    # ── Main paint ───────────────────────────────────────────────
+    # ── Main paint ─────────────────────────────────────────────────
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        W, H = self.width(), self.height()
 
-        # Background
-        painter.fillRect(self.rect(), QColor(COLORS["bg_deep"]))
+        # Deep space background
+        bg = QRadialGradient(W/2, H*0.4, max(W,H)*0.7)
+        bg.setColorAt(0, QColor("#0d1526"))
+        bg.setColorAt(1, QColor(C["bg0"]))
+        p.fillRect(self.rect(), bg)
 
-        # Grid dots (subtle iso grid)
-        painter.setPen(QPen(QColor(COLORS["border"]), 1))
+        # Subtle iso grid
+        p.setPen(QPen(QColor("#1a2540"), 0.5))
         for gx in range(5):
             for gy in range(5):
-                p = self._to_screen(gx, gy, 0)
-                painter.drawPoint(p)
+                pt = self._iso(gx, gy, 0)
+                p.drawPoint(pt)
 
         # Draw floors bottom to top
-        self._floor_paths = []
-        for i, dept in enumerate(DEPARTMENTS):
-            path = self._draw_floor(painter, i, dept)
-            self._floor_paths.append((i, dept, path))
+        self._top_paths = []
+        for i, fl in enumerate(self.floors):
+            path = self._draw_floor(p, i, fl)
+            self._top_paths.append((i, fl, path))
 
-        # Draw agents on top
+        # Draw agents on top of floors
         for ag in self.agents:
-            dept = ag["dept"]
-            floor_idx = dept["floor"] - 1
-            self._draw_agent(painter, ag, floor_idx)
+            self._draw_agent(p, ag)
 
-        # Scan line overlay
-        painter.setOpacity(0.03)
-        for y in range(0, self.height(), 3):
-            painter.setPen(QPen(QColor(0, 242, 254), 1))
-            painter.drawLine(0, y, self.width(), y)
-        painter.setOpacity(1.0)
+        # Scanlines overlay
+        p.setOpacity(0.025)
+        p.setPen(QPen(QColor("#a0d4ff"), 1))
+        for y in range(0, H, 4):
+            p.drawLine(0, y, W, y)
+        p.setOpacity(1.0)
 
-        # HQ title at top
-        painter.setPen(QColor(COLORS["neon_cyan"]))
-        font = QFont("Segoe UI", 10, QFont.Weight.Bold)
-        painter.setFont(font)
-        painter.drawText(QRectF(0, 6, self.width(), 20),
-                         Qt.AlignmentFlag.AlignHCenter, "🏛️  ZEZELABS SİBER KARARGAH")
+        # Top title
+        p.setPen(QColor(C["t2"]))
+        f = QFont("Segoe UI", 9)
+        f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 2)
+        p.setFont(f)
+        p.drawText(QRectF(0, 8, W, 18), Qt.AlignmentFlag.AlignHCenter,
+                   "🏛  ZEZELABS QUANTUM COMMAND CENTER")
 
-        painter.end()
+        # Ticker (bottom of canvas)
+        self._draw_ticker(p, W, H)
+        p.end()
+
+    def _draw_ticker(self, p, W, H):
+        msgs = [f"  ⚡ {fl['icon']} {fl['name']}: Sağlık %{fl['health']}  " for fl in self.floors]
+        ticker_text = "  •  ".join(msgs)
+        p.setFont(QFont("Consolas", 8))
+
+        # Measure text width
+        fm = p.fontMetrics()
+        text_w = fm.horizontalAdvance(ticker_text)
+        offset = int(self._ticker_offset) % (text_w + W)
+
+        p.setPen(QColor(C["t3"]))
+        p.fillRect(QRectF(0, H - 20, W, 20), QColor(C["bg0"]))
+        p.drawText(QPointF(W - offset, H - 6), ticker_text)
+        if W - offset + text_w < W:
+            p.drawText(QPointF(W - offset + text_w + W, H - 6), ticker_text)
 
     def mouseMoveEvent(self, event):
-        pos = QPointF(event.pos())
-        self.hovered_floor = -1
-        if hasattr(self, "_floor_paths"):
-            for (i, dept, path) in reversed(self._floor_paths):
+        pos = event.position()
+        self.hovered = None
+        if hasattr(self, "_top_paths"):
+            for (i, fl, path) in reversed(self._top_paths):
                 if path.contains(pos):
-                    self.hovered_floor = i
+                    self.hovered = fl["id"]
                     self.setCursor(Qt.CursorShape.PointingHandCursor)
-                    break
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
-        self.update()
+                    return
+        self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def mousePressEvent(self, event):
-        if hasattr(self, "_floor_paths"):
-            pos = QPointF(event.pos())
-            for (i, dept, path) in reversed(self._floor_paths):
+        pos = event.position()
+        if hasattr(self, "_top_paths"):
+            for (i, fl, path) in reversed(self._top_paths):
                 if path.contains(pos):
-                    self.selected_floor = i
-                    self.department_clicked.emit(dept)
-                    break
-        self.update()
+                    self.selected_id = fl["id"]
+                    self.floor_selected.emit(fl)
+                    return
 
 
-# ═══════════════════════════════════════════════════════════════
-# TELEMETRY PANEL (Right side)
-# ═══════════════════════════════════════════════════════════════
-class TelemetryBar(QWidget):
-    def __init__(self, label, color, parent=None):
-        super().__init__(parent)
-        self.label = label
-        self.color = color
-        self.value = 0
-        self.setFixedHeight(34)
-        self._anim_value = 0.0
+# ═══════════════════════════════════════════════════════════════════
+# COMMAND PALETTE
+# ═══════════════════════════════════════════════════════════════════
+class CommandPalette(QDialog):
+    command_executed = Signal(str)
+    CMDS = [
+        ("ajan listele",         "Tüm aktif ajanları listele"),
+        ("görev ver: [metin]",   "Tüm sisteme görev gönder"),
+        ("CEO raporu",           "CEO özet görünümünü aç"),
+        ("strateji: [metin]",    "Strateji departmanına görev"),
+        ("mühendislik: [metin]", "Mühendislik departmanına görev"),
+        ("finans: [metin]",      "Finans departmanına görev"),
+        ("sistem snapshot",      "Anlık durum kaydet"),
+        ("log temizle",          "Log ekranını temizle"),
+    ]
 
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self._anim_tick)
-        self.timer.start(30)
-
-    def set_value(self, v):
-        self.value = max(0, min(100, v))
-
-    def _anim_tick(self):
-        diff = self.value - self._anim_value
-        self._anim_value += diff * 0.1
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        w, h = self.width(), self.height()
-        # Background track
-        track = QRectF(0, h // 2 - 4, w, 8)
-        painter.setBrush(QColor(COLORS["bg_card"]))
-        painter.setPen(QPen(QColor(COLORS["border"]), 1))
-        painter.drawRoundedRect(track, 4, 4)
-
-        # Fill
-        fill_w = (self._anim_value / 100.0) * w
-        if fill_w > 0:
-            fill = QRectF(0, h // 2 - 4, fill_w, 8)
-            grad = QLinearGradient(0, 0, w, 0)
-            c = QColor(self.color)
-            c2 = QColor(self.color)
-            c2.setAlpha(120)
-            grad.setColorAt(0, c2)
-            grad.setColorAt(1, c)
-            painter.setBrush(grad)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawRoundedRect(fill, 4, 4)
-
-        # Label + value
-        painter.setPen(QColor(COLORS["text"]))
-        painter.setFont(QFont("Segoe UI", 8))
-        painter.drawText(QRectF(0, 0, w * 0.7, h // 2 - 4), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, self.label)
-        painter.setPen(QColor(self.color))
-        painter.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        painter.drawText(QRectF(0, 0, w, h // 2 - 4), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                         f"{self._anim_value:.0f}%")
-        painter.end()
-
-
-class TelemetryPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(260)
-        self.setMaximumWidth(320)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedWidth(580)
+
+        container = QFrame(self)
+        container.setStyleSheet(f"""
+            QFrame {{ background:{C['bg3']}; border:1px solid {C['b2']};
+                      border-radius:12px; }}
+        """)
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(50); shadow.setOffset(0, 10)
+        shadow.setColor(QColor(0,0,0,200))
+        container.setGraphicsEffect(shadow)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0,0,0,0)
+        lay  = QVBoxLayout(container)
+        lay.setContentsMargins(0,0,0,0); lay.setSpacing(0)
+
+        # Input
+        row = QHBoxLayout(); row.setContentsMargins(16,14,16,14); row.setSpacing(10)
+        row.addWidget(QLabel("⌘", styleSheet=f"color:{C['t3']};font-size:15px;"))
+        self.inp = QLineEdit()
+        self.inp.setPlaceholderText("Komut ver veya departman seç...")
+        self.inp.setStyleSheet(f"background:transparent;border:none;color:{C['t1']};font-size:14px;")
+        self.inp.textChanged.connect(self._filter)
+        self.inp.returnPressed.connect(self._exec)
+        row.addWidget(self.inp)
+        lay.addLayout(row)
+
+        div = QFrame(); div.setFrameShape(QFrame.Shape.HLine)
+        div.setStyleSheet(f"color:{C['b1']};")
+        lay.addWidget(div)
+
+        self.lst = QListWidget()
+        self.lst.setMaximumHeight(320)
+        self.lst.setStyleSheet(f"""
+            QListWidget {{ background:transparent;border:none;
+                           color:{C['t1']};font-size:12px;padding:6px 0; }}
+            QListWidget::item {{ padding:8px 16px;border-radius:6px;margin:1px 8px; }}
+            QListWidget::item:selected,QListWidget::item:hover {{
+                background:{C['bg4']}; }}
+        """)
+        self.lst.itemActivated.connect(lambda it: (self.command_executed.emit(it.data(Qt.ItemDataRole.UserRole)), self.hide()))
+        lay.addWidget(self.lst)
+
+        footer = QLabel("↑↓ Gezin  ↵ Çalıştır  ESC Kapat")
+        footer.setStyleSheet(f"color:{C['t3']};font-size:9px;border-top:1px solid {C['b0']};padding:7px 16px;")
+        lay.addWidget(footer)
+        root.addWidget(container)
+        self._fill(self.CMDS)
+
+    def _fill(self, cmds):
+        self.lst.clear()
+        for cmd, desc in cmds:
+            it = QListWidgetItem(f"  {cmd}    —    {desc}")
+            it.setData(Qt.ItemDataRole.UserRole, cmd)
+            self.lst.addItem(it)
+        if self.lst.count(): self.lst.setCurrentRow(0)
+
+    def _filter(self, t):
+        self._fill([(c,d) for c,d in self.CMDS if t.lower() in c+d] if t else self.CMDS)
+
+    def _exec(self):
+        it = self.lst.currentItem()
+        if it: self.command_executed.emit(it.data(Qt.ItemDataRole.UserRole))
+        elif self.inp.text(): self.command_executed.emit(self.inp.text())
+        self.hide()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self.inp.clear(); self.inp.setFocus(); self._fill(self.CMDS)
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key.Key_Escape: self.hide()
+        elif e.key() == Qt.Key.Key_Down:
+            self.lst.setCurrentRow(min(self.lst.currentRow()+1, self.lst.count()-1))
+        elif e.key() == Qt.Key.Key_Up:
+            self.lst.setCurrentRow(max(self.lst.currentRow()-1, 0))
+        else: super().keyPressEvent(e)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# LEFT SIDEBAR — Department Health Dashboard
+# ═══════════════════════════════════════════════════════════════════
+class HealthCard(QFrame):
+    clicked = Signal(dict)
+
+    def __init__(self, fl, parent=None):
+        super().__init__(parent)
+        self.fl = fl
+        self.setFixedHeight(62)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._selected = False
+        self._build()
+        self._apply_style()
+
+    def _build(self):
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(10, 8, 10, 8); lay.setSpacing(8)
+
+        # Color bar
+        bar = QFrame(); bar.setFixedWidth(3)
+        bar.setStyleSheet(f"background:{self.fl['color']};border-radius:1px;")
+        lay.addWidget(bar)
+
+        # Icon
+        ic = QLabel(self.fl["icon"])
+        ic.setFont(QFont("Segoe UI", 16)); ic.setFixedWidth(26)
+        lay.addWidget(ic)
+
+        # Info
+        info = QVBoxLayout(); info.setSpacing(2)
+        name = QLabel(self.fl["name"])
+        name.setStyleSheet(f"color:{C['t1']};font-size:11px;font-weight:bold;")
+        info.addWidget(name)
+
+        h = self.fl["health"]
+        hc = health_color(h)
+        sub = QLabel(f"Sağlık: %{h}  •  {self.fl['agents']} ajan")
+        sub.setStyleSheet(f"color:{hc};font-size:9px;")
+        info.addWidget(sub)
+        lay.addLayout(info)
+        lay.addStretch()
+
+        # Mini health bar
+        self._mini_bar = QProgressBar()
+        self._mini_bar.setRange(0, 100)
+        self._mini_bar.setValue(h)
+        self._mini_bar.setFixedSize(40, 6)
+        self._mini_bar.setTextVisible(False)
+        self._mini_bar.setStyleSheet(f"""
+            QProgressBar {{ background:{C['b0']};border-radius:3px;border:none; }}
+            QProgressBar::chunk {{
+                background:{hc}; border-radius:3px;
+            }}
+        """)
+        lay.addWidget(self._mini_bar)
+
+    def _apply_style(self):
+        border = self.fl["color"] if self._selected else C["b0"]
+        bg = f"{self.fl['color']}18" if self._selected else "transparent"
         self.setStyleSheet(f"""
-            QWidget {{
-                background: {COLORS['bg_dark']};
-                color: {COLORS['text']};
+            HealthCard {{
+                background:{bg};
+                border-left:3px solid {border};
+                border-radius:6px;
+            }}
+            HealthCard:hover {{
+                background:{self.fl['color']}12;
             }}
         """)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+    def set_selected(self, v):
+        self._selected = v
+        self._apply_style()
+
+    def mousePressEvent(self, e):
+        self.clicked.emit(self.fl)
+
+
+class SidebarPanel(QWidget):
+    floor_selected = Signal(dict)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(210)
+        self.setStyleSheet(f"background:{C['bg2']};border-right:1px solid {C['b0']};")
+        lay = QVBoxLayout(self); lay.setContentsMargins(8,10,8,10); lay.setSpacing(5)
+
+        # Logo
+        logo = QLabel("Z")
+        logo.setFixedHeight(44); logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo.setStyleSheet(f"""
+            background:qlineargradient(x1:0,y1:0,x2:1,y2:1,
+                stop:0 #4f8ef7,stop:1 #8b5cf6);
+            color:{C['bg0']};font-size:22px;font-weight:900;
+            border-radius:10px;
+        """)
+        lay.addWidget(logo)
+
+        t = QLabel("ZEZELABS")
+        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setStyleSheet(f"color:{C['acc']};font-size:9px;font-weight:bold;letter-spacing:3px;")
+        lay.addWidget(t)
+
+        s = QLabel("QUANTUM COMMAND CENTER")
+        s.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        s.setWordWrap(True)
+        s.setStyleSheet(f"color:{C['t3']};font-size:7px;letter-spacing:1px;")
+        lay.addWidget(s)
+
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color:{C['b0']};margin:4px 0;"); lay.addWidget(sep)
+
+        dl = QLabel("DEPARTMAN SAĞLIĞI")
+        dl.setStyleSheet(f"color:{C['t3']};font-size:8px;letter-spacing:1px;padding-left:4px;")
+        lay.addWidget(dl)
+
+        self._cards = {}
+        for fl in FLOORS:
+            card = HealthCard(fl)
+            card.clicked.connect(self._on_card)
+            lay.addWidget(card)
+            self._cards[fl["id"]] = card
+
+        lay.addStretch()
+
+        # System status
+        self.sys_lbl = QLabel("● SİSTEM AKTİF")
+        self.sys_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sys_lbl.setStyleSheet(f"color:{C['ok']};font-size:9px;font-weight:bold;")
+        lay.addWidget(self.sys_lbl)
+
+        ver = QLabel("JARVIS v6.0")
+        ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ver.setStyleSheet(f"color:{C['t3']};font-size:8px;border:1px solid {C['b1']};border-radius:3px;padding:2px;")
+        lay.addWidget(ver)
+
+    def _on_card(self, fl):
+        for fid, card in self._cards.items():
+            card.set_selected(fid == fl["id"])
+        self.floor_selected.emit(fl)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# RIGHT PANEL — Bloomberg-style Telemetry
+# ═══════════════════════════════════════════════════════════════════
+class TelemetryPanel(QWidget):
+    def __init__(self, agents, parent=None):
+        super().__init__(parent)
+        self.agents = agents
+        self.setFixedWidth(250)
+        self.setStyleSheet(f"background:{C['bg2']};border-left:1px solid {C['b0']};")
+
+        lay = QVBoxLayout(self); lay.setContentsMargins(12,12,12,12); lay.setSpacing(10)
 
         # Title
-        title = QLabel("📊  CANLI TELEMETRİ")
-        title.setStyleSheet(f"""
-            color: {COLORS['neon_cyan']};
-            font-family: 'Segoe UI';
-            font-size: 11px;
-            font-weight: bold;
-            letter-spacing: 2px;
-            border-bottom: 1px solid {COLORS['border']};
-            padding-bottom: 8px;
-        """)
-        layout.addWidget(title)
+        t = QLabel("📊  CANLI TELEMETRİ")
+        t.setStyleSheet(f"color:{C['acc']};font-size:9px;font-weight:bold;letter-spacing:2px;border-bottom:1px solid {C['b0']};padding-bottom:7px;")
+        lay.addWidget(t)
 
-        # System bars
-        self.bar_cpu    = TelemetryBar("CPU", COLORS["neon_cyan"])
-        self.bar_ram    = TelemetryBar("RAM", COLORS["neon_purple"])
-        self.bar_net    = TelemetryBar("AĞBANT", COLORS["neon_green"])
-        self.bar_ai     = TelemetryBar("AI YÜKÜ", COLORS["neon_pink"])
+        # Metric bars
+        self._bars = {}
+        for lbl, col in [("CPU", "#4f8ef7"),("RAM","#8b5cf6"),("AĞBANT","#22d3a6"),("AI YÜKÜ","#ec4899")]:
+            lay.addWidget(self._make_bar_section(lbl, col))
 
-        for bar in [self.bar_cpu, self.bar_ram, self.bar_net, self.bar_ai]:
-            layout.addWidget(bar)
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color:{C['b0']};"); lay.addWidget(sep)
 
-        # Separator
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {COLORS['border']};")
-        layout.addWidget(sep)
-
-        # Active dept info
-        self.dept_title = QLabel("SEÇILI DEPARTMAN")
-        self.dept_title.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 9px; letter-spacing: 2px;")
-        layout.addWidget(self.dept_title)
+        # Selected dept
+        lbl = QLabel("SEÇİLİ DEPARTMAN")
+        lbl.setStyleSheet(f"color:{C['t3']};font-size:8px;letter-spacing:1px;")
+        lay.addWidget(lbl)
 
         self.dept_name = QLabel("—")
-        self.dept_name.setStyleSheet(f"color: {COLORS['neon_gold']}; font-size: 15px; font-weight: bold;")
-        layout.addWidget(self.dept_name)
+        self.dept_name.setStyleSheet(f"color:{C['warn']};font-size:14px;font-weight:bold;")
+        lay.addWidget(self.dept_name)
 
-        self.dept_agents = QLabel("")
-        self.dept_agents.setStyleSheet(f"color: {COLORS['text']}; font-size: 10px;")
-        layout.addWidget(self.dept_agents)
+        self.dept_sub = QLabel("")
+        self.dept_sub.setStyleSheet(f"color:{C['t2']};font-size:9px;")
+        lay.addWidget(self.dept_sub)
 
-        # Separator
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet(f"color: {COLORS['border']};")
-        layout.addWidget(sep2)
+        sep2 = QFrame(); sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet(f"color:{C['b0']};"); lay.addWidget(sep2)
 
         # Live log
-        log_label = QLabel("⚡  SİSTEM LOGU")
-        log_label.setStyleSheet(f"color: {COLORS['neon_green']}; font-size: 9px; font-weight: bold; letter-spacing: 2px;")
-        layout.addWidget(log_label)
+        ll = QLabel("⚡  SİSTEM LOGU")
+        ll.setStyleSheet(f"color:{C['ok']};font-size:8px;font-weight:bold;letter-spacing:1px;")
+        lay.addWidget(ll)
 
-        self.log_area = QTextEdit()
-        self.log_area.setReadOnly(True)
-        self.log_area.setMaximumHeight(160)
-        self.log_area.setStyleSheet(f"""
-            QTextEdit {{
-                background: {COLORS['bg_deep']};
-                color: {COLORS['neon_green']};
-                font-family: 'Consolas', monospace;
-                font-size: 9px;
-                border: 1px solid {COLORS['border']};
-                border-radius: 4px;
-            }}
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setStyleSheet(f"""
+            QTextEdit {{ background:{C['bg0']};color:{C['ok']};
+                         font-family:'Consolas';font-size:8px;
+                         border:1px solid {C['b0']};border-radius:4px; }}
         """)
-        layout.addWidget(self.log_area)
+        lay.addWidget(self.log)
 
-        layout.addStretch()
-
-        # Status indicator
-        self.status_dot = QLabel("● SİSTEM AKTİF")
-        self.status_dot.setStyleSheet(f"color: {COLORS['neon_green']}; font-size: 9px; font-weight: bold;")
-        layout.addWidget(self.status_dot)
-
-        # Simulate telemetry
+        # Simulated metrics
+        self._log_pool = [
+            "Ajan mesh senkronize edildi","CEO kanalı aktif",
+            "Strateji raporu güncellendi","Finans verisi çekildi",
+            "Güvenlik taraması tamamlandı","AI inference hazır",
+            "Yeni görev sıraya alındı","Pipeline analizi yapıldı",
+        ]
         self._sim_timer = QTimer(self)
         self._sim_timer.timeout.connect(self._simulate)
-        self._sim_timer.start(1500)
+        self._sim_timer.start(1800)
+        self._add_log("⚡ JARVIS v6.0 — QUANTUM COMMAND CENTER başlatıldı")
         self._simulate()
 
-        self._log_msgs = [
-            "JARVIS çekirdek başlatıldı",
-            "Departman bağlantıları aktif",
-            "Ajan mesh ağı senkronize",
-            "CEO kanalı dinleniyor",
-            "Strateji modülü hazır",
-            "Finans verisi güncellendi",
-            "Pazarlama ajanı rapor gönderdi",
-            "Satış pipeline analizi tamamlandı",
-            "Güvenlik taraması geçildi",
-            "AI inference motoru hazır",
-            "WebSocket bağlantısı stabil",
-            "Bellek optimizasyonu yapıldı",
-        ]
-        self._add_log("⚡ ZEZELABS JARVIS v4.0 başlatıldı")
+    def _make_bar_section(self, label, color):
+        w = QWidget(); w.setStyleSheet("background:transparent;")
+        l = QVBoxLayout(w); l.setContentsMargins(0,0,0,0); l.setSpacing(3)
+
+        row = QHBoxLayout()
+        lbl = QLabel(label); lbl.setStyleSheet(f"color:{C['t3']};font-size:8px;letter-spacing:1px;")
+        row.addWidget(lbl)
+        val = QLabel("—"); val.setStyleSheet(f"color:{color};font-size:8px;font-weight:bold;font-family:'Consolas';")
+        row.addStretch(); row.addWidget(val)
+        l.addLayout(row)
+
+        bar = QProgressBar(); bar.setRange(0,100); bar.setValue(42)
+        bar.setFixedHeight(5); bar.setTextVisible(False)
+        bar.setStyleSheet(f"""
+            QProgressBar {{ background:{C['b0']};border-radius:2px;border:none; }}
+            QProgressBar::chunk {{ background:{color};border-radius:2px; }}
+        """)
+        l.addWidget(bar)
+        self._bars[label] = (bar, val, color)
+        return w
 
     def _simulate(self):
-        self.bar_cpu.set_value(random.uniform(15, 85))
-        self.bar_ram.set_value(random.uniform(30, 75))
-        self.bar_net.set_value(random.uniform(5, 60))
-        self.bar_ai.set_value(random.uniform(20, 95))
-        msg = random.choice(self._log_msgs)
+        vals = {
+            "CPU": random.randint(18, 78),
+            "RAM": random.randint(32, 72),
+            "AĞBANT": random.randint(8, 55),
+            "AI YÜKÜ": random.randint(25, 90),
+        }
+        for k, (bar, val, col) in self._bars.items():
+            v = vals.get(k, 50)
+            bar.setValue(v)
+            val.setText(f"%{v}")
+        msg = random.choice(self._log_pool)
         self._add_log(f"→ {msg}")
 
     def _add_log(self, text):
         ts = time.strftime("%H:%M:%S")
-        self.log_area.append(f"[{ts}] {text}")
-        sb = self.log_area.verticalScrollBar()
-        sb.setValue(sb.maximum())
+        self.log.append(f"[{ts}] {text}")
+        self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
 
-    def update_department(self, dept):
-        self.dept_name.setText(f"{dept['icon']} {dept['name']}")
-        color = dept["color"]
-        self.dept_name.setStyleSheet(f"color: {color}; font-size: 15px; font-weight: bold;")
-        agents = dept["agents"]
-        self.dept_agents.setText(f"{agents} Aktif Ajan  |  Kat {dept['floor']}")
-        self._add_log(f"→ {dept['name']} departmanı seçildi")
-
-
-# ═══════════════════════════════════════════════════════════════
-# CHAT PANEL (Bottom)
-# ═══════════════════════════════════════════════════════════════
-class ChatBubble(QFrame):
-    def __init__(self, text, is_user=False, parent=None):
-        super().__init__(parent)
-        self.is_user = is_user
-        self.setFrameShape(QFrame.Shape.NoFrame)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 2, 4, 2)
-
-        label = QLabel(text)
-        label.setWordWrap(True)
-        label.setMaximumWidth(400)
-        if is_user:
-            label.setStyleSheet(f"""
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-                    stop:0 {COLORS['neon_purple']}, stop:1 {COLORS['neon_pink']});
-                color: white;
-                border-radius: 12px;
-                padding: 8px 14px;
-                font-family: 'Segoe UI';
-                font-size: 10px;
-            """)
-            layout.addStretch()
-            layout.addWidget(label)
-        else:
-            label.setStyleSheet(f"""
-                background: {COLORS['bg_card']};
-                color: {COLORS['neon_cyan']};
-                border: 1px solid {COLORS['border_glow']};
-                border-radius: 12px;
-                padding: 8px 14px;
-                font-family: 'Consolas', monospace;
-                font-size: 10px;
-            """)
-            layout.addWidget(label)
-            layout.addStretch()
+    def update_department(self, fl):
+        hc = health_color(fl["health"])
+        self.dept_name.setText(f"{fl['icon']} {fl['name']}")
+        self.dept_name.setStyleSheet(f"color:{fl['color']};font-size:14px;font-weight:bold;")
+        self.dept_sub.setText(f"{fl['agents']} Ajan  •  Sağlık %{fl['health']}")
+        self.dept_sub.setStyleSheet(f"color:{hc};font-size:9px;")
+        self._add_log(f"→ {fl['name']} departmanı seçildi")
 
 
-class ChatPanel(QWidget):
+# ═══════════════════════════════════════════════════════════════════
+# CHAT STRIP (bottom)
+# ═══════════════════════════════════════════════════════════════════
+class ChatStrip(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMaximumHeight(220)
-        self.setStyleSheet(f"""
-            background: {COLORS['bg_dark']};
-            border-top: 1px solid {COLORS['border']};
+        self.setFixedHeight(46)
+        self.setStyleSheet(f"background:{C['bg0']};border-top:1px solid {C['b0']};")
+        lay = QHBoxLayout(self); lay.setContentsMargins(12,6,12,6); lay.setSpacing(8)
+
+        hint = QLabel("⌘K")
+        hint.setStyleSheet(f"color:{C['t3']};font-size:10px;background:{C['bg2']};border:1px solid {C['b1']};border-radius:4px;padding:2px 7px;")
+        lay.addWidget(hint)
+
+        self.inp = QLineEdit()
+        self.inp.setPlaceholderText("Karargaha komut ver...")
+        self.inp.setStyleSheet(f"""
+            QLineEdit {{ background:{C['bg2']};color:{C['t1']};
+                         border:1px solid {C['b1']};border-radius:8px;
+                         padding:5px 12px;font-size:12px; }}
+            QLineEdit:focus {{ border-color:{C['acc']}; }}
         """)
+        self.inp.returnPressed.connect(self._send)
+        lay.addWidget(self.inp)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 8)
-        layout.setSpacing(4)
-
-        # Chat title
-        title = QLabel("💬  JARVIS İLE KONUŞ")
-        title.setStyleSheet(f"""
-            color: {COLORS['neon_pink']};
-            font-family: 'Segoe UI';
-            font-size: 10px;
-            font-weight: bold;
-            letter-spacing: 2px;
-        """)
-        layout.addWidget(title)
-
-        # Scroll area for bubbles
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.scroll.setStyleSheet(f"""
-            QScrollArea {{ border: none; background: transparent; }}
-            QScrollBar:vertical {{
-                background: {COLORS['bg_deep']};
-                width: 4px;
-                border-radius: 2px;
-            }}
-            QScrollBar::handle:vertical {{
-                background: {COLORS['border']};
-                border-radius: 2px;
-            }}
-        """)
-
-        self.bubble_container = QWidget()
-        self.bubble_container.setStyleSheet("background: transparent;")
-        self.bubble_layout = QVBoxLayout(self.bubble_container)
-        self.bubble_layout.setSpacing(4)
-        self.bubble_layout.addStretch()
-        self.scroll.setWidget(self.bubble_container)
-        layout.addWidget(self.scroll)
-
-        # Input bar
-        input_row = QHBoxLayout()
-        self.input = QLineEdit()
-        self.input.setPlaceholderText("Karargaha komut ver...")
-        self.input.setStyleSheet(f"""
-            QLineEdit {{
-                background: {COLORS['bg_deep']};
-                color: {COLORS['text']};
-                border: 1px solid {COLORS['border']};
-                border-radius: 8px;
-                padding: 6px 12px;
-                font-family: 'Segoe UI';
-                font-size: 10px;
-            }}
-            QLineEdit:focus {{
-                border-color: {COLORS['neon_cyan']};
-            }}
-        """)
-        self.input.returnPressed.connect(self._send)
-        input_row.addWidget(self.input)
-
-        send_btn = QPushButton("▶")
-        send_btn.setFixedSize(36, 36)
-        send_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
-                    stop:0 {COLORS['neon_cyan']}, stop:1 {COLORS['neon_purple']});
-                color: {COLORS['bg_deep']};
-                border: none;
-                border-radius: 8px;
-                font-size: 12px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background: {COLORS['neon_pink']};
-            }}
-        """)
-        send_btn.clicked.connect(self._send)
-        input_row.addWidget(send_btn)
-        layout.addLayout(input_row)
-
-        # Welcome message
-        self._add_bubble("🏛️ ZEZELABS SİBER KARARGAH aktif. Departman seçin veya komut verin.", is_user=False)
-
-    def _add_bubble(self, text, is_user):
-        bubble = ChatBubble(text, is_user)
-        self.bubble_layout.insertWidget(self.bubble_layout.count() - 1, bubble)
-        QTimer.singleShot(50, lambda: self.scroll.verticalScrollBar().setValue(
-            self.scroll.verticalScrollBar().maximum()))
+        send = QPushButton("▶")
+        send.setFixedSize(32,32)
+        send.setStyleSheet(f"background:{C['acc']};color:white;border:none;border-radius:8px;font-size:11px;")
+        send.clicked.connect(self._send)
+        lay.addWidget(send)
 
     def _send(self):
-        text = self.input.text().strip()
-        if not text:
-            return
-        self._add_bubble(text, is_user=True)
-        self.input.clear()
-        # Simulate JARVIS reply
-        QTimer.singleShot(600, lambda: self._jarvis_reply(text))
+        txt = self.inp.text().strip()
+        if txt:
+            self.inp.clear()
 
-    def _jarvis_reply(self, user_text):
-        replies = [
-            f"Anlıyorum: '{user_text}' — İşleniyor...",
-            "Tüm departmanlar hazır efendim.",
-            "Operasyon başlatıldı. Sonuç 3 dakika içinde.",
-            "Strateji modülü analiz ediyor...",
-            "CEO kanalına iletildi. Onay bekleniyor.",
-            "Veri akışı optimize edildi.",
-            "Ajan mesh ağı senkronize. Görev dağıtıldı.",
-        ]
-        reply = random.choice(replies)
-        self._add_bubble(f"⚡ {reply}", is_user=False)
+    def handle_command(self, cmd):
+        pass
 
 
-# ═══════════════════════════════════════════════════════════════
-# SIDEBAR — Department List
-# ═══════════════════════════════════════════════════════════════
-class DeptButton(QPushButton):
-    def __init__(self, dept, parent=None):
-        super().__init__(parent)
-        self.dept = dept
-        self.setText(f"  {dept['icon']}  {dept['name']}")
-        self.setFixedHeight(38)
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background: {COLORS['bg_card']};
-                color: {COLORS['text']};
-                border: 1px solid {COLORS['border']};
-                border-left: 3px solid {dept['color']};
-                border-radius: 6px;
-                text-align: left;
-                padding-left: 8px;
-                font-family: 'Segoe UI';
-                font-size: 10px;
-            }}
-            QPushButton:hover {{
-                background: {COLORS['bg_dark']};
-                border-left-color: {dept['color']};
-                color: {dept['color']};
-            }}
-        """)
-
-
-class SidebarPanel(QWidget):
-    department_selected = Signal(dict)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedWidth(180)
-        self.setStyleSheet(f"""
-            background: {COLORS['bg_dark']};
-            border-right: 1px solid {COLORS['border']};
-        """)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 12, 8, 12)
-        layout.setSpacing(5)
-
-        # Logo area
-        logo = QLabel("Z")
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo.setFixedHeight(48)
-        logo.setStyleSheet(f"""
-            background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
-                stop:0 {COLORS['neon_cyan']}, stop:1 {COLORS['neon_purple']});
-            color: {COLORS['bg_deep']};
-            font-family: 'Segoe UI Black';
-            font-size: 24px;
-            font-weight: 900;
-            border-radius: 12px;
-        """)
-        layout.addWidget(logo)
-
-        title = QLabel("ZEZELABS")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet(f"""
-            color: {COLORS['neon_cyan']};
-            font-size: 9px;
-            font-weight: bold;
-            letter-spacing: 3px;
-        """)
-        layout.addWidget(title)
-
-        sub = QLabel("SİBER KARARGAH")
-        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sub.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 8px; letter-spacing: 2px;")
-        layout.addWidget(sub)
-
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {COLORS['border']}; margin: 4px 0;")
-        layout.addWidget(sep)
-
-        dept_label = QLabel("DEPARTMANLAR")
-        dept_label.setStyleSheet(f"color: {COLORS['text_dim']}; font-size: 8px; letter-spacing: 2px; padding-left: 4px;")
-        layout.addWidget(dept_label)
-
-        for dept in DEPARTMENTS:
-            btn = DeptButton(dept)
-            btn.clicked.connect(lambda checked=False, d=dept: self.department_selected.emit(d))
-            layout.addWidget(btn)
-
-        layout.addStretch()
-
-        # Version badge
-        ver = QLabel("JARVIS v4.0")
-        ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ver.setStyleSheet(f"""
-            color: {COLORS['neon_purple']};
-            font-size: 8px;
-            font-weight: bold;
-            letter-spacing: 1px;
-            border: 1px solid {COLORS['neon_purple']};
-            border-radius: 4px;
-            padding: 3px 8px;
-        """)
-        layout.addWidget(ver)
-
-
-# ═══════════════════════════════════════════════════════════════
-# TITLE BAR (custom frameless)
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# TITLE BAR
+# ═══════════════════════════════════════════════════════════════════
 class TitleBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(42)
-        self._drag_pos = None
-        self.setStyleSheet(f"""
-            background: {COLORS['bg_deep']};
-            border-bottom: 1px solid {COLORS['border']};
-        """)
+        self.setFixedHeight(38); self._drag = None
+        self.setStyleSheet(f"background:{C['bg0']};border-bottom:1px solid {C['b0']};")
+        lay = QHBoxLayout(self); lay.setContentsMargins(12,0,8,0); lay.setSpacing(8)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 0, 8, 0)
+        # macOS traffic lights
+        for col, fn in [("#ff5f57","close"),("#febc2e","min"),("#28c840","max")]:
+            b = QPushButton(); b.setFixedSize(12,12)
+            b.setStyleSheet(f"background:{col};border-radius:6px;border:none;")
+            b.clicked.connect(getattr(self, f"_do_{fn}"))
+            lay.addWidget(b)
 
-        # Icon + title
-        icon_lbl = QLabel("🏛️")
-        icon_lbl.setStyleSheet("font-size: 14px;")
-        layout.addWidget(icon_lbl)
+        lay.addSpacing(10)
 
-        title = QLabel("ZEZELABS SİBER KARARGAH")
-        title.setStyleSheet(f"""
-            color: {COLORS['neon_cyan']};
-            font-family: 'Segoe UI';
-            font-size: 11px;
-            font-weight: bold;
-            letter-spacing: 2px;
-        """)
-        layout.addWidget(title)
-        layout.addStretch()
+        lbl = QLabel("ZEZELABS  —  QUANTUM COMMAND CENTER  |  JARVIS v6.0")
+        lbl.setStyleSheet(f"color:{C['t2']};font-size:10px;letter-spacing:1px;")
+        lay.addWidget(lbl)
+        lay.addStretch()
 
-        # Clock
         self.clock = QLabel()
-        self.clock.setStyleSheet(f"color: {COLORS['neon_green']}; font-size: 10px; font-family: 'Consolas';")
-        layout.addWidget(self.clock)
+        self.clock.setStyleSheet(f"color:{C['ok']};font-size:10px;font-family:'Consolas';")
+        lay.addWidget(self.clock)
+        t = QTimer(self); t.timeout.connect(self._update_clock); t.start(1000)
         self._update_clock()
-        clk_timer = QTimer(self)
-        clk_timer.timeout.connect(self._update_clock)
-        clk_timer.start(1000)
 
-        layout.addSpacing(10)
-
-        # Window buttons
-        for sym, cb, col in [("—", self._minimize, COLORS["neon_green"]),
-                              ("⬜", self._maximize, COLORS["neon_gold"]),
-                              ("✕", self._close,    COLORS["neon_pink"])]:
-            btn = QPushButton(sym)
-            btn.setFixedSize(28, 28)
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: transparent;
-                    color: {COLORS['text_dim']};
-                    border: none;
-                    font-size: 12px;
-                    border-radius: 4px;
-                }}
-                QPushButton:hover {{
-                    background: {col};
-                    color: {COLORS['bg_deep']};
-                }}
-            """)
-            btn.clicked.connect(cb)
-            layout.addWidget(btn)
-
-    def _update_clock(self):
-        self.clock.setText(time.strftime("⏱  %H:%M:%S"))
-
-    def _minimize(self):
-        self.window().showMinimized()
-
-    def _maximize(self):
-        if self.window().isMaximized():
-            self.window().showNormal()
-        else:
-            self.window().showMaximized()
-
-    def _close(self):
-        self.window().close()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
-
-    def mouseMoveEvent(self, event):
-        if self._drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
-            self.window().move(event.globalPosition().toPoint() - self._drag_pos)
-
-    def mouseReleaseEvent(self, event):
-        self._drag_pos = None
+    def _update_clock(self): self.clock.setText(f"⏱  {time.strftime('%H:%M:%S')}")
+    def _do_close(self): self.window().close()
+    def _do_min(self): self.window().showMinimized()
+    def _do_max(self):
+        self.window().showNormal() if self.window().isMaximized() else self.window().showMaximized()
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._drag = e.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
+    def mouseMoveEvent(self, e):
+        if self._drag and e.buttons() == Qt.MouseButton.LeftButton:
+            self.window().move(e.globalPosition().toPoint() - self._drag)
+    def mouseReleaseEvent(self, e): self._drag = None
 
 
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 # MAIN WINDOW
-# ═══════════════════════════════════════════════════════════════
-class ZezeHQWindow(QMainWindow):
+# ═══════════════════════════════════════════════════════════════════
+class QuantumCommandCenter(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ZEZELABS SİBER KARARGAH — JARVIS v4.0")
-        self.setMinimumSize(1050, 720)
-        self.resize(1200, 780)
+        self.setWindowTitle("ZEZELABS — QUANTUM COMMAND CENTER")
+        self.resize(1300, 820); self.setMinimumSize(1000, 660)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
 
-        # Icon
-        ico_path = os.path.join(os.path.dirname(__file__), "brain.ico")
-        if os.path.exists(ico_path):
-            self.setWindowIcon(QIcon(ico_path))
+        ico = os.path.join(os.path.dirname(__file__), "brain.ico")
+        if os.path.exists(ico): self.setWindowIcon(QIcon(ico))
 
-        # System tray
-        self._setup_tray(ico_path)
+        self._palette_dlg = CommandPalette(self)
+        self._palette_dlg.command_executed.connect(self._on_cmd)
 
-        # Central widget
-        central = QWidget()
-        central.setStyleSheet(f"background: {COLORS['bg_deep']};")
-        self.setCentralWidget(central)
+        self._build()
+        QShortcut(QKeySequence("Ctrl+K"), self, self._show_palette)
+        QShortcut(QKeySequence("Escape"), self, self.showMinimized)
+        self._setup_tray(ico)
 
-        root = QVBoxLayout(central)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+    def _build(self):
+        c = QWidget(); c.setStyleSheet(f"background:{C['bg1']};")
+        self.setCentralWidget(c)
+        root = QVBoxLayout(c); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
 
-        # Title bar
-        self.title_bar = TitleBar()
-        root.addWidget(self.title_bar)
+        root.addWidget(TitleBar(self))
 
-        # Main content row
-        content_row = QHBoxLayout()
-        content_row.setSpacing(0)
-        content_row.setContentsMargins(0, 0, 0, 0)
+        # Main row
+        row = QHBoxLayout(); row.setSpacing(0); row.setContentsMargins(0,0,0,0)
 
         # Sidebar
         self.sidebar = SidebarPanel()
-        self.sidebar.department_selected.connect(self._on_department)
-        content_row.addWidget(self.sidebar)
+        self.sidebar.floor_selected.connect(self._on_floor)
+        row.addWidget(self.sidebar)
 
-        # Center: HQ + Chat stacked
-        center_col = QVBoxLayout()
-        center_col.setSpacing(0)
-        center_col.setContentsMargins(0, 0, 0, 0)
+        # Center HQ
+        self.hq = IsometricHQ()
+        self.hq.floor_selected.connect(self._on_floor)
+        row.addWidget(self.hq, 1)
 
-        self.hq = IsometricHQWidget()
-        self.hq.department_clicked.connect(self._on_department)
-        center_col.addWidget(self.hq, stretch=1)
+        # Right telemetry
+        self.telem = TelemetryPanel(self.hq.agents)
+        row.addWidget(self.telem)
 
-        self.chat = ChatPanel()
-        center_col.addWidget(self.chat)
+        root.addLayout(row, 1)
 
-        content_row.addLayout(center_col, stretch=1)
+        # Bottom chat strip + status
+        root.addWidget(ChatStrip())
+        root.addWidget(self._status_bar())
 
-        # Telemetry
-        self.telemetry = TelemetryPanel()
-        content_row.addWidget(self.telemetry)
+    def _status_bar(self):
+        w = QWidget(); w.setFixedHeight(22)
+        w.setStyleSheet(f"background:{C['bg0']};border-top:1px solid {C['b0']};")
+        l = QHBoxLayout(w); l.setContentsMargins(12,0,12,0); l.setSpacing(16)
 
-        root.addLayout(content_row)
+        self._agt_lbl = QLabel()
+        self._agt_lbl.setStyleSheet(f"color:{C['t3']};font-size:8px;font-family:'Consolas';")
+        l.addWidget(self._agt_lbl)
 
-    def _setup_tray(self, ico_path):
-        if not QSystemTrayIcon.isSystemTrayAvailable():
-            return
-        icon = QIcon(ico_path) if os.path.exists(ico_path) else QIcon()
+        l.addStretch()
+        ver = QLabel("JARVIS v6.0  ·  Quantum Command Center  ·  Senaryo A")
+        ver.setStyleSheet(f"color:{C['t3']};font-size:8px;")
+        l.addWidget(ver)
+
+        dot = QLabel("●"); dot.setStyleSheet(f"color:{C['ok']};font-size:8px;")
+        l.addWidget(dot)
+
+        t = QTimer(self); t.timeout.connect(lambda: self._agt_lbl.setText(
+            f"⚡ {sum(1 for a in self.hq.agents if a.status=='AKTİF')}/{len(self.hq.agents)} Ajan Aktif"
+        )); t.start(1000)
+        self._agt_lbl.setText(f"⚡ {len(self.hq.agents)} Ajan Aktif")
+        return w
+
+    def _on_floor(self, fl):
+        self.sidebar._on_card(fl)
+        self.telem.update_department(fl)
+
+    def _show_palette(self):
+        g = self.geometry()
+        self._palette_dlg.move(g.x()+(g.width()-self._palette_dlg.width())//2, g.y()+70)
+        self._palette_dlg.show(); self._palette_dlg.raise_()
+        self._palette_dlg.activateWindow()
+
+    def _on_cmd(self, cmd):
+        self.telem._add_log(f"⌘ {cmd}")
+
+    def _setup_tray(self, ico):
+        if not QSystemTrayIcon.isSystemTrayAvailable(): return
+        icon = QIcon(ico) if os.path.exists(ico) else self.style().standardIcon(
+            self.style().StandardPixmap.SP_ComputerIcon)
         self.tray = QSystemTrayIcon(icon, self)
-        menu = QMenu()
-        menu.addAction("Göster", self.showNormal)
-        menu.addAction("Çıkış", QApplication.quit)
-        self.tray.setContextMenu(menu)
-        self.tray.setToolTip("ZEZELABS SİBER KARARGAH")
+        m = QMenu()
+        m.addAction("Göster", self.showNormal)
+        m.addAction("⌘K Komut", self._show_palette)
+        m.addSeparator(); m.addAction("Çıkış", QApplication.quit)
+        self.tray.setContextMenu(m)
+        self.tray.setToolTip("ZEZELABS — QUANTUM COMMAND CENTER")
         self.tray.show()
-        self.tray.activated.connect(self._tray_activated)
-
-    def _tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.showNormal()
-            self.activateWindow()
-
-    def _on_department(self, dept):
-        self.telemetry.update_department(dept)
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Escape:
-            self.showMinimized()
+        self.tray.activated.connect(
+            lambda r: self.showNormal() if r == QSystemTrayIcon.ActivationReason.DoubleClick else None)
 
 
-# ═══════════════════════════════════════════════════════════════
-# ENTRY POINT
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 def main():
     app = QApplication(sys.argv)
-    app.setApplicationName("ZEZELABS SİBER KARARGAH")
-    app.setApplicationVersion("4.0.0")
+    app.setApplicationName("ZEZELABS QUANTUM COMMAND CENTER")
+    app.setApplicationVersion("6.0.0")
 
-    # Dark palette
-    palette = QPalette()
-    palette.setColor(QPalette.ColorRole.Window,          QColor(COLORS["bg_deep"]))
-    palette.setColor(QPalette.ColorRole.WindowText,      QColor(COLORS["text"]))
-    palette.setColor(QPalette.ColorRole.Base,            QColor(COLORS["bg_dark"]))
-    palette.setColor(QPalette.ColorRole.AlternateBase,   QColor(COLORS["bg_card"]))
-    palette.setColor(QPalette.ColorRole.Text,            QColor(COLORS["text"]))
-    palette.setColor(QPalette.ColorRole.Button,          QColor(COLORS["bg_card"]))
-    palette.setColor(QPalette.ColorRole.ButtonText,      QColor(COLORS["text"]))
-    palette.setColor(QPalette.ColorRole.Highlight,       QColor(COLORS["neon_cyan"]))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(COLORS["bg_deep"]))
-    app.setPalette(palette)
+    pal = QPalette()
+    pal.setColor(QPalette.ColorRole.Window,      QColor(C["bg1"]))
+    pal.setColor(QPalette.ColorRole.WindowText,  QColor(C["t1"]))
+    pal.setColor(QPalette.ColorRole.Base,        QColor(C["bg2"]))
+    pal.setColor(QPalette.ColorRole.Text,        QColor(C["t1"]))
+    pal.setColor(QPalette.ColorRole.Button,      QColor(C["bg3"]))
+    pal.setColor(QPalette.ColorRole.ButtonText,  QColor(C["t1"]))
+    pal.setColor(QPalette.ColorRole.Highlight,   QColor(C["acc"]))
+    pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    app.setPalette(pal)
 
-    window = ZezeHQWindow()
-    window.show()
+    win = QuantumCommandCenter()
+    win.show()
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()
