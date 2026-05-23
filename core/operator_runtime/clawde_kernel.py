@@ -39,9 +39,15 @@ class ClawdeOperatorKernel:
         parts = shlex.split(command, posix=(os.name != "nt"))
         if not parts:
             return []
-        # On Windows: map POSIX 'ls' to 'dir' via cmd
-        if os.name == "nt" and parts[0].lower() in {"ls"}:
-            return ["cmd", "/c", "dir"]
+        # On Windows: map POSIX shell builtins
+        if os.name == "nt":
+            first_cmd = parts[0].lower()
+            if first_cmd == "ls":
+                return ["cmd", "/c", "dir"]
+            elif first_cmd == "echo":
+                return ["cmd", "/c", "echo"] + parts[1:]
+            elif first_cmd == "pwd":
+                return ["cmd", "/c", "cd"]
         return parts
 
     # ── Shell Execution ────────────────────────────────────────────────────────

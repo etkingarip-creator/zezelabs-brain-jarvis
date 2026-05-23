@@ -41,6 +41,14 @@ class WorkspaceGuard:
             return False, f"Protected file: {path}"
         if self._is_forbidden_prefix(abs_path):
             return False, f"Forbidden system path: {path}"
+            
+        # Allow Desktop writes
+        user_profile = os.environ.get("USERPROFILE")
+        if user_profile:
+            desktop_path = os.path.realpath(os.path.abspath(os.path.join(user_profile, "Desktop")))
+            if abs_path.startswith(desktop_path):
+                return True, "Write allowed"
+                
         if not abs_path.startswith(self.workspace_root):
             return False, f"Write outside workspace denied: {path}"
         return True, "Write allowed"
