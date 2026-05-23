@@ -357,7 +357,7 @@ class JarvisDesktopApp:
         icons = [
             ("🏠", "Ana Panel"),
             ("📈", "Finansal Analiz"),
-            ("💬", "Sesli Sohbet"),
+            ("💬", "Yazılı & Sesli Sohbet"),
             ("📁", "Dosya Gezgini"),
             ("⚙️", "Sistem Ayarları"),
             ("👤", "Profil Özetleri"),
@@ -379,7 +379,7 @@ class JarvisDesktopApp:
                 elif index == 1:
                     return lambda e: self.open_matrix()
                 elif index == 2:
-                    return lambda e: self.toggle_chat_drawer()
+                    return lambda e: self.switch_view("chat")
                 elif index == 3:
                     return lambda e: self.open_docs()
                 elif index == 6:
@@ -406,14 +406,17 @@ class JarvisDesktopApp:
             ToolTip(btn_box, name)
 
     def build_dashboard_view(self):
+        self.dashboard_frame = tk.Frame(self.content_frame, bg=self.theme["background"])
+        self.dashboard_frame.pack(fill=tk.BOTH, expand=True)
+        
         # Grid Configuration: Col 0 (280px, Depts), Col 1 (420px, central widgets), Col 2 (expand, finance/activities)
-        self.content_frame.columnconfigure(0, minsize=290, weight=0)
-        self.content_frame.columnconfigure(1, minsize=430, weight=0)
-        self.content_frame.columnconfigure(2, weight=1)
-        self.content_frame.rowconfigure(0, weight=1)
+        self.dashboard_frame.columnconfigure(0, minsize=290, weight=0)
+        self.dashboard_frame.columnconfigure(1, minsize=430, weight=0)
+        self.dashboard_frame.columnconfigure(2, weight=1)
+        self.dashboard_frame.rowconfigure(0, weight=1)
         
         # --- COLUMN 0: DEPARTMANLAR ---
-        self.col_depts = tk.Frame(self.content_frame, bg=self.theme["background"])
+        self.col_depts = tk.Frame(self.dashboard_frame, bg=self.theme["background"])
         self.col_depts.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         
         depts_header = tk.Label(
@@ -541,7 +544,7 @@ class JarvisDesktopApp:
         self.progress_dir = 1
 
         # --- COLUMN 1: CENTRAL PANEL (SINIR AĞI & VOICE) ---
-        self.col_center = tk.Frame(self.content_frame, bg=self.theme["background"])
+        self.col_center = tk.Frame(self.dashboard_frame, bg=self.theme["background"])
         self.col_center.grid(row=0, column=1, sticky="nsew", padx=10)
         
         # A. Sinir Ağı Box
@@ -613,7 +616,7 @@ class JarvisDesktopApp:
         self.settings_btn.pack(side=tk.RIGHT)
 
         # --- COLUMN 2: RIGHT PANEL (FINANCE & RECENT ACTIVITIES) ---
-        self.col_right = tk.Frame(self.content_frame, bg=self.theme["background"])
+        self.col_right = tk.Frame(self.dashboard_frame, bg=self.theme["background"])
         self.col_right.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
         
         # A. Finansal Veriler Box
@@ -807,8 +810,260 @@ class JarvisDesktopApp:
 
     def switch_view(self, view_name):
         self.active_panel = view_name
-        # Simple alert
         self.append_log(f"[INFO] Navigating to: {view_name}")
+        
+        if view_name == "dashboard":
+            if hasattr(self, "chat_view_frame"):
+                self.chat_view_frame.pack_forget()
+            if hasattr(self, "dashboard_frame"):
+                self.dashboard_frame.pack(fill=tk.BOTH, expand=True)
+        elif view_name == "chat":
+            if hasattr(self, "dashboard_frame"):
+                self.dashboard_frame.pack_forget()
+            if not hasattr(self, "chat_view_frame"):
+                self.build_chat_view()
+            self.chat_view_frame.pack(fill=tk.BOTH, expand=True)
+            self.chat_input_entry.focus_set()
+
+    def build_chat_view(self):
+        self.chat_view_frame = tk.Frame(self.content_frame, bg=self.theme["background"])
+        
+        # Grid Configuration: Col 0 (Chat Area), Col 1 (Quick Commands Sidebar)
+        self.chat_view_frame.columnconfigure(0, weight=1)
+        self.chat_view_frame.columnconfigure(1, minsize=290, weight=0)
+        self.chat_view_frame.rowconfigure(0, weight=1)
+        
+        # --- LEFT SIDE: CHAT AREA ---
+        chat_left_f = tk.Frame(self.chat_view_frame, bg=self.theme["background"])
+        chat_left_f.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        
+        # 1. Header with dynamic neon look
+        header_f = tk.Frame(chat_left_f, bg=self.theme["surface"], highlightthickness=1, highlightbackground=self.theme["border"])
+        header_f.pack(fill=tk.X, pady=(0, 10))
+        
+        tk.Label(
+            header_f, text="💬 ZOM BEYİN MERKEZİ - YAZILI SOHBET KONSOLU", 
+            font=("Segoe UI", 11, "bold"), bg=self.theme["surface"], fg=self.theme["primary"]
+        ).pack(side=tk.LEFT, padx=15, pady=10)
+        
+        tk.Label(
+            header_f, text="SECURE CONNECTION: ACTIVE", 
+            font=("Segoe UI", 8, "bold"), bg=self.theme["surface"], fg=self.theme["success"]
+        ).pack(side=tk.RIGHT, padx=15, pady=10)
+        
+        # 2. Large Chat History Viewer
+        self.chat_history_viewer = ScrolledText(
+            chat_left_f, font=("Segoe UI", 10), bg=self.theme["surface"], fg=self.theme["text"],
+            bd=0, highlightthickness=1, highlightbackground=self.theme["border"], relief="flat", wrap=tk.WORD
+        )
+        self.chat_history_viewer.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # Tags for bubbles
+        self.chat_history_viewer.tag_configure("user_header", justify="right", foreground=self.theme["text_muted"], font=("Segoe UI", 8, "bold"), spacing1=8)
+        self.chat_history_viewer.tag_configure("user_bubble", justify="right", background="#0f766e", foreground="#ffffff", font=("Segoe UI", 10, "bold"), spacing3=12, rmargin=20, lmargin1=150, lmargin2=150)
+        self.chat_history_viewer.tag_configure("jarvis_header", justify="left", foreground=self.theme["primary"], font=("Segoe UI", 8, "bold"), spacing1=8)
+        self.chat_history_viewer.tag_configure("jarvis_bubble", justify="left", background="#1e293b", foreground="#f8fafc", font=("Segoe UI", 10), spacing3=12, lmargin1=20, lmargin2=20, rmargin=150)
+        self.chat_history_viewer.tag_configure("system_alert", justify="center", foreground=self.theme["warning"], font=("Segoe UI", 9, "italic"), spacing3=8)
+        
+        # Add welcome message
+        self.chat_history_viewer.config(state=tk.NORMAL)
+        self.chat_history_viewer.insert(tk.END, "⚡ JARVIS\n", "jarvis_header")
+        self.chat_history_viewer.insert(tk.END, " Merhaba! ZOM Merkez Odası yazılı chat konsoluna bağlandınız. Buradan otonom departmanlara talimat verebilir, projeyi sorgulayabilir veya siber durum kontrolü yapabilirsiniz. Size nasıl yardımcı olabilirim?\n\n", "jarvis_bubble")
+        self.chat_history_viewer.config(state=tk.DISABLED)
+        
+        # 3. Bottom Text Entry & Send Button
+        entry_f = tk.Frame(chat_left_f, bg=self.theme["surface"], highlightthickness=1, highlightbackground=self.theme["border"])
+        entry_f.pack(fill=tk.X)
+        
+        # Inner Frame for input to have padding
+        input_container = tk.Frame(entry_f, bg=self.theme["background"], highlightthickness=1, highlightbackground=self.theme["border"])
+        input_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=8)
+        
+        self.chat_input_entry = tk.Entry(
+            input_container, font=("Segoe UI", 11), bg=self.theme["background"], fg="#ffffff",
+            bd=0, insertbackground="#ffffff", highlightthickness=0
+        )
+        self.chat_input_entry.pack(fill=tk.X, padx=10, pady=8)
+        self.chat_input_entry.bind("<Return>", self.send_main_chat_task)
+        
+        # Placeholder behavior
+        self.chat_input_entry.insert(0, "Mesajınızı buraya yazın...")
+        self.chat_input_entry.config(fg=self.theme["text_muted"])
+        self.chat_input_entry.bind("<FocusIn>", lambda e: self.on_chat_entry_focus_in())
+        self.chat_input_entry.bind("<FocusOut>", lambda e: self.on_chat_entry_focus_out())
+        
+        self.chat_send_btn = self.create_premium_button(
+            entry_f, text="GÖNDER  ➔", command=self.send_main_chat_task, bg=self.theme["primary"], fg=self.theme["background"]
+        )
+        self.chat_send_btn.pack(side=tk.RIGHT, padx=10, pady=8, ipady=4)
+        
+        # --- RIGHT SIDE: SIDEBAR FOR QUICK COMMANDS ---
+        chat_right_f = tk.Frame(self.chat_view_frame, bg=self.theme["background"])
+        chat_right_f.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        
+        quick_header = tk.Label(
+            chat_right_f, text="⚡ HIZLI TALİMATLAR", font=("Segoe UI", 11, "bold"),
+            bg=self.theme["background"], fg=self.theme["primary"]
+        )
+        quick_header.pack(anchor="w", pady=(0, 10))
+        
+        # We can add beautiful buttons/cards for Quick Commands
+        commands = [
+            ("📊 Projeyi Analiz Et", "Projeyi kapsamlı analiz et ve rapor hazırla. tüm ağaç yapısı, yollar ve dosyaları."),
+            ("🛡️ Siber Savunma Durumu", "Siber savunma departmanı durumunu ve aktif kalkan protokollerini sorgula."),
+            ("📈 Finansal Rapor Al", "Finansal departmandan en son bakiye ve otonom bütçe kullanım raporunu getir."),
+            ("⚛️ Sinir Ağı Testi", "Otonom karar alma sinir ağının canlı gecikme ve doğruluk oranlarını test et."),
+            ("⚙️ Sistem Sağlık Kontrolü", "ZOM mimarisindeki tüm mikroservis ve ajanların sağlık durumlarını listele."),
+            ("🧹 Eski Logları Temizle", "Eski log dosyalarını ve diğer gereksiz yedekleri güvenli bir şekilde arşivle.")
+        ]
+        
+        for name, cmd_txt in commands:
+            card = tk.Frame(
+                chat_right_f, bg=self.theme["surface"], bd=0, 
+                highlightthickness=1, highlightbackground=self.theme["border"]
+            )
+            card.pack(fill=tk.X, pady=4)
+            
+            lbl_name = tk.Label(card, text=name, font=("Segoe UI", 9, "bold"), bg=self.theme["surface"], fg=self.theme["text"])
+            lbl_name.pack(anchor="w", padx=12, pady=(8, 2))
+            
+            lbl_desc = tk.Label(
+                card, text=cmd_txt[:45] + "...", font=("Segoe UI", 8), 
+                bg=self.theme["surface"], fg=self.theme["text_muted"], wrap=250, justify=tk.LEFT
+            )
+            lbl_desc.pack(anchor="w", padx=12, pady=(0, 8))
+            
+            # Clicking the card automatically populates the text field and runs it
+            def make_cmd_callback(text=cmd_txt):
+                return lambda e: self.run_quick_command(text)
+                
+            card.bind("<Button-1>", make_cmd_callback())
+            lbl_name.bind("<Button-1>", make_cmd_callback())
+            lbl_desc.bind("<Button-1>", make_cmd_callback())
+            
+            # Hover highlight glow
+            def on_cmd_enter(e, c=card):
+                c.config(highlightbackground=self.theme["primary"])
+            def on_cmd_leave(e, c=card):
+                c.config(highlightbackground=self.theme["border"])
+                
+            card.bind("<Enter>", on_cmd_enter)
+            card.bind("<Leave>", on_cmd_leave)
+            
+            ToolTip(card, "Bu talimatı hemen göndermek için tıklayın")
+
+    def run_quick_command(self, text):
+        self.chat_input_entry.delete(0, tk.END)
+        self.chat_input_entry.config(fg="#ffffff")
+        self.chat_input_entry.insert(0, text)
+        self.send_main_chat_task()
+
+    def on_chat_entry_focus_in(self):
+        if self.chat_input_entry.get() == "Mesajınızı buraya yazın...":
+            self.chat_input_entry.delete(0, tk.END)
+            self.chat_input_entry.config(fg="#ffffff")
+            
+    def on_chat_entry_focus_out(self):
+        if not self.chat_input_entry.get():
+            self.chat_input_entry.insert(0, "Mesajınızı buraya yazın...")
+            self.chat_input_entry.config(fg=self.theme["text_muted"])
+
+    def add_main_chat_message(self, sender, text):
+        self.chat_history_viewer.config(state=tk.NORMAL)
+        if sender == "user":
+            self.chat_history_viewer.insert(tk.END, "👤 KULLANICI\n", "user_header")
+            self.chat_history_viewer.insert(tk.END, f"  {text}   ✓✓  \n\n", "user_bubble")
+        elif sender == "jarvis":
+            self.chat_history_viewer.insert(tk.END, "⚡ JARVIS\n", "jarvis_header")
+            self.chat_history_viewer.insert(tk.END, f"  {text}  \n\n", "jarvis_bubble")
+        else: # system
+            self.chat_history_viewer.insert(tk.END, f"⚠️ {text}\n\n", "system_alert")
+        self.chat_history_viewer.see(tk.END)
+        self.chat_history_viewer.config(state=tk.DISABLED)
+
+    def send_main_chat_task(self, event=None):
+        task = self.chat_input_entry.get()
+        if not task or task == "Mesajınızı buraya yazın...":
+            messagebox.showwarning("Uyarı", "Lütfen geçerli bir görev girin.")
+            return
+            
+        self.add_main_chat_message("user", task)
+        self.chat_input_entry.delete(0, tk.END)
+        
+        # Show "thinking..." status bubbles in Chat
+        self.chat_history_viewer.config(state=tk.NORMAL)
+        thinking_index = self.chat_history_viewer.index(tk.END + "-1c")
+        self.chat_history_viewer.insert(tk.END, "⚡ JARVIS: Düşünüyor...\n", "jarvis_header")
+        self.chat_history_viewer.insert(tk.END, " • • • \n\n", "jarvis_bubble")
+        self.chat_history_viewer.see(tk.END)
+        self.chat_history_viewer.config(state=tk.DISABLED)
+        
+        # Start a background thread to send the HTTP post request asynchronously
+        threading.Thread(target=self._async_send_main_task, args=(task, thinking_index), daemon=True).start()
+
+    def _async_send_main_task(self, task, thinking_index):
+        try:
+            resp = httpx.post(
+                f"http://{self.launcher.host}:{self.launcher.port}/api/jarvis/chat", 
+                json={"message": task}, 
+                timeout=30
+            )
+            resp_data = resp.json()
+            self.root.after(0, self._resolve_main_task_response, resp_data, thinking_index, task)
+        except Exception as e:
+            self.root.after(0, self._resolve_main_task_error, str(e), thinking_index, task)
+
+    def _resolve_main_task_response(self, resp_data, thinking_index, task):
+        try:
+            self.chat_history_viewer.config(state=tk.NORMAL)
+            self.chat_history_viewer.delete(thinking_index, tk.END)
+            self.chat_history_viewer.config(state=tk.DISABLED)
+        except Exception:
+            pass
+        
+        if "response" in resp_data:
+            reply = resp_data["response"]
+        elif "result" in resp_data:
+            reply = resp_data["result"]
+        elif "success" in resp_data:
+            status_txt = "BAŞARILI" if resp_data["success"] else "BAŞARISIZ"
+            reply = f"Görev Durumu: {status_txt}\nGörev ID: {resp_data.get('task_id', 'N/A')}\nÇalışma Modu: {resp_data.get('provider_mode', 'hybrid')}\n"
+            if resp_data.get("created_files"):
+                reply += f"Oluşturulan Dosyalar:\n" + "\n".join(f"- {f}" for f in resp_data["created_files"])
+            else:
+                reply += "Yeni dosya oluşturulmadı."
+        else:
+            reply = json.dumps(resp_data, indent=2, ensure_ascii=False)
+            
+        self.add_main_chat_message("jarvis", reply)
+        self.append_log(f"[SUCCESS] Görev tamamlandı: {task}")
+        
+        # Trigger Jarvis to speak the reply if possible
+        if hasattr(self, "voice_streamer") and hasattr(self.voice_streamer, "tts"):
+            async def _speak():
+                try:
+                    async for chunk in self.voice_streamer.tts.stream_speak(reply):
+                        if chunk and chunk != b"[SIMULATION]":
+                            await self.voice_streamer.voice_client.play_audio_chunk(chunk)
+                except Exception as e:
+                    self.append_log(f"[WARNING] Ses sentezi hatası: {e}")
+            
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(_speak())
+            except RuntimeError:
+                threading.Thread(target=lambda: asyncio.run(_speak()), daemon=True).start()
+
+    def _resolve_main_task_error(self, err_msg, thinking_index, task):
+        try:
+            self.chat_history_viewer.config(state=tk.NORMAL)
+            self.chat_history_viewer.delete(thinking_index, tk.END)
+            self.chat_history_viewer.config(state=tk.DISABLED)
+        except Exception:
+            pass
+        
+        self.add_main_chat_message("system", f"Görev iletimi başarısız: {err_msg}")
+        self.append_log(f"[ERROR] Görev iletimi başarısız: {err_msg}")
 
     def on_entry_focus_in(self, event):
         if self.input_entry.get() == "Jarvis'e görev ver":
@@ -1688,7 +1943,7 @@ class JarvisDesktopApp:
         self.launcher.open_browser_dashboard()
         
     def open_matrix(self):
-        webbrowser.open("http://127.0.0.1:8502")
+        webbrowser.open("http://localhost:3000")
 
     def add_chat_message(self, sender, text):
         self.response_viewer.config(state=tk.NORMAL)

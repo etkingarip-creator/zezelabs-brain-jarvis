@@ -12,4 +12,4 @@ def test_desktop_launcher_safe_env():
     # Only asserting it doesn't crash on import/init
     launcher = BackendLauncher()
     assert launcher.host == "127.0.0.1"
-    assert launcher.port == "8000"
+    assert launcher.port == "5000"
