@@ -1,10 +1,17 @@
 import sys
 import os
+import warnings
+
+# Disable HF Hub symlink warnings and suppress console warnings
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
+
 import math
 import random
 import json
 import webbrowser
 import threading
+import asyncio
 from queue import Queue, Empty
 
 # Add project root to path for standalone execution
@@ -19,6 +26,89 @@ from desktop.backend_launcher import BackendLauncher
 from desktop.theme.colors import get_theme, HSL_PREMIUM
 from desktop.sse_client import SSELogClient
 
+# 🏛️ ZOM GÜVENLİK DUVARI: Kütüphane İthalat Fallback Mekanizması
+try:
+    import pyaudio
+    PYAUDIO_AVAILABLE = True
+except ImportError:
+    PYAUDIO_AVAILABLE = False
+
+try:
+    import pyttsx3
+    TTS_AVAILABLE = True
+except ImportError:
+    TTS_AVAILABLE = False
+
+class VoiceStreamer:
+    def __init__(self, app_instance=None):
+        self.app = app_instance
+        self.pyaudio_available = PYAUDIO_AVAILABLE
+        
+        from core.audio.stt import TurkishSTT
+        from core.audio.tts import TurkishTTS
+        from desktop.voice_client import DesktopVoiceClient
+        
+        self.stt = TurkishSTT()
+        self.tts = TurkishTTS()
+        self.pcm_buffer = b""
+        self.mic_active = False
+        
+        # Safe callback to capture chunks and measure peak amplitude
+        def on_pcm(data, peak):
+            if self.mic_active:
+                self.pcm_buffer += data
+                
+        self.voice_client = DesktopVoiceClient(on_pcm_captured=on_pcm)
+
+    def speak_welcoming(self):
+        async def _speak():
+            welcome_text = "Jarvis ses motoru devrede. Merkez odalar aktif. Size nasıl yardımcı olabilirim?"
+            async for chunk in self.tts.stream_speak(welcome_text):
+                if chunk and chunk != b"[SIMULATION]":
+                    await self.voice_client.play_audio_chunk(chunk)
+                    
+        async def _init_client():
+            await self.voice_client.start()
+            await _speak()
+            
+        try:
+            loop = asyncio.get_running_loop()
+            is_running = loop.is_running()
+        except RuntimeError:
+            is_running = False
+
+        if is_running:
+            asyncio.create_task(_init_client())
+        else:
+            threading.Thread(target=lambda: asyncio.run(_init_client()), daemon=True).start()
+
+    def start_mic_stream(self):
+        self.mic_active = True
+        self.pcm_buffer = b""
+        self.voice_client.set_mic(True)
+
+    def stop_mic_stream(self):
+        self.mic_active = False
+        self.voice_client.set_mic(False)
+        
+        if self.pcm_buffer:
+            async def _transcribe_and_reply():
+                if self.app:
+                    self.app.append_log("[INFO] Konuşma çözümleniyor...")
+                
+                text = await self.stt.transcribe(self.pcm_buffer)
+                self.pcm_buffer = b""
+                
+                if text:
+                    if self.app:
+                        self.app.root.after(0, self.app.add_chat_message, "user", text)
+                        self.app.root.after(0, self.app.send_voice_text_task, text)
+                else:
+                    if self.app:
+                        self.app.append_log("[WARNING] Konuşma algılanamadı veya çok sessiz.")
+                        
+            asyncio.create_task(_transcribe_and_reply())
+
 class ToolTip:
     def __init__(self, widget, text):
         self.widget = widget
@@ -30,7 +120,11 @@ class ToolTip:
     def show_tip(self, event=None):
         if self.tip_window or not self.text:
             return
-        x, y, cx, cy = self.widget.bbox("insert")
+        bbox = self.widget.bbox("insert")
+        if bbox:
+            x, y, cx, cy = bbox
+        else:
+            x = y = cx = cy = 0
         x = x + self.widget.winfo_rootx() + 25
         y = y + self.widget.winfo_rooty() + 20
         self.tip_window = tw = tk.Toplevel(self.widget)
@@ -145,6 +239,12 @@ class JarvisDesktopApp:
         self.chart_step = 0
         self.active_panel = "dashboard"
         
+        # Mouse coordinate tracking for interactive effects
+        self.mouse_x = None
+        self.mouse_y = None
+        self.fin_mouse_x = None
+        self.fin_mouse_y = None
+        
         # Build UI
         self.setup_main_layout()
         
@@ -158,6 +258,10 @@ class JarvisDesktopApp:
         self.process_queue_loop()
         self.animate_loop()
         self.update_telemetry_loop()
+        
+        self.hovered_node = None
+        self.voice_streamer = VoiceStreamer(self)
+        self.voice_streamer.speak_welcoming()
         
         # Clean shutdown handling
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -278,10 +382,12 @@ class JarvisDesktopApp:
             def on_nav_enter(e, canvas=btn_box, t_id=text_id):
                 canvas.config(bg=self.theme["border"])
                 canvas.itemconfig(t_id, fill=self.theme["primary"])
+                canvas.create_line(2, 4, 2, 51, fill=self.theme["primary"], width=3, tags="glow_line")
                 
             def on_nav_leave(e, canvas=btn_box, t_id=text_id):
                 canvas.config(bg=self.theme["surface"])
                 canvas.itemconfig(t_id, fill=self.theme["text_muted"])
+                canvas.delete("glow_line")
                 
             btn_box.bind("<Enter>", on_nav_enter)
             btn_box.bind("<Leave>", on_nav_leave)
@@ -312,7 +418,9 @@ class JarvisDesktopApp:
             ("zeze_guard", "🛡️ ZEZE_GUARD", "Token & Bütçe", "AKTİF | ZOM KORUMALI", "#ec4899"),
             ("zeze_sec", "🛡️ ZEZE_SEC", "Siber Savunma", "AKTİF | KALKAN AÇIK", "#00f0ff"),
             ("zeze_rnd", "⚛️ ZEZE_RND", "Ar-Ge & İnovasyon", "TARANIYOR | KOKORO-82M", "#eab308"),
-            ("zeze_eng", "⚙️ ZEZE_ENG", "Geliştirme", "MEŞGÜL | core/config GÜNCEL", "#ef4444")
+            ("zeze_eng", "⚙️ ZEZE_ENG", "Geliştirme", "MEŞGUL | config GÜNCEL", "#f59e0b"),
+            ("crypto_trading", "📈 ZEZE_TRADING", "Otonom Al-Sat", "AKTİF | BOT ÇALIŞIYOR", "#10b981"),
+            ("media_factory", "🎬 ZEZE_MEDIA", "İçerik Stüdyosu", "AKTİF | RENDERING", "#a78bfa")
         ]
         
         self.dept_widgets = {}
@@ -321,19 +429,19 @@ class JarvisDesktopApp:
                 self.col_depts, bg=self.theme["surface"], bd=0, 
                 highlightthickness=1, highlightbackground=self.theme["border"]
             )
-            card.pack(fill=tk.X, pady=6)
+            card.pack(fill=tk.X, pady=2)
             
-            # Interactive circle glow on the left
-            left_canvas = tk.Canvas(card, width=48, height=64, bg=self.theme["surface"], highlightthickness=0)
-            left_canvas.pack(side=tk.LEFT, padx=(10, 5))
+            # Interactive circle glow on the left (tighter padding & smaller canvas)
+            left_canvas = tk.Canvas(card, width=36, height=52, bg=self.theme["surface"], highlightthickness=0)
+            left_canvas.pack(side=tk.LEFT, padx=(8, 4))
             
-            # Draw glow circle and pulsing dot
-            circle_id = left_canvas.create_oval(8, 16, 40, 48, outline=color, width=2, fill=self.theme["background"])
-            dot_id = left_canvas.create_oval(20, 28, 28, 36, fill=color, width=0)
+            # Draw glow circle and pulsing dot centered at (18, 26)
+            circle_id = left_canvas.create_oval(6, 14, 30, 38, outline=color, width=2, fill=self.theme["background"])
+            dot_id = left_canvas.create_oval(14, 22, 22, 30, fill=color, width=0)
             
             # Text layout
             text_frame = tk.Frame(card, bg=self.theme["surface"])
-            text_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=10, padx=5)
+            text_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, pady=3, padx=5)
             
             lbl_title = tk.Label(text_frame, text=title, font=("Segoe UI", 10, "bold"), bg=self.theme["surface"], fg=self.theme["text"])
             lbl_title.pack(anchor="w")
@@ -525,6 +633,8 @@ class JarvisDesktopApp:
         # Neon Green Area Line Chart
         self.fin_canvas = tk.Canvas(self.fin_box, height=85, bg=self.theme["background"], highlightthickness=0)
         self.fin_canvas.pack(fill=tk.X, padx=15, pady=(5, 12))
+        self.fin_canvas.bind("<Motion>", self.on_fin_canvas_hover)
+        self.fin_canvas.bind("<Leave>", self.on_fin_canvas_leave)
         
         # B. Son Aktiviteler Box (with scrollable department activities)
         self.act_box = tk.Frame(
@@ -605,6 +715,7 @@ class JarvisDesktopApp:
             bd=0, insertbackground=self.theme["text"], highlightthickness=0
         )
         self.input_entry.pack(fill=tk.X, padx=10, pady=8)
+        self.input_entry.bind("<Return>", self.send_task)
         self.input_entry.insert(0, "Jarvis'e görev ver")
         self.input_entry.bind("<FocusIn>", self.on_entry_focus_in)
         self.input_entry.bind("<FocusOut>", self.on_entry_focus_out)
@@ -641,12 +752,20 @@ class JarvisDesktopApp:
         ).pack(anchor="w", pady=(0, 4))
         
         self.response_viewer = ScrolledText(
-            resp_f, font=("Consolas", 8), bg=self.theme["background"], fg=self.theme["primary"],
+            resp_f, font=("Segoe UI", 9), bg=self.theme["background"], fg=self.theme["text"],
             bd=0, highlightthickness=1, highlightbackground=self.theme["border"], relief="flat", wrap=tk.WORD
         )
         self.response_viewer.pack(fill=tk.BOTH, expand=True)
-        self.response_viewer.insert(tk.END, "{\n  \"status\": \"idle\",\n  \"waiting_for_task\": true\n}")
-        self.response_viewer.config(state=tk.DISABLED)
+        
+        # Configure paragraph bubble tag layouts
+        self.response_viewer.tag_configure("user_header", justify="right", foreground=self.theme["text_muted"], font=("Segoe UI", 8, "bold"), spacing1=6)
+        self.response_viewer.tag_configure("user_bubble", justify="right", background="#0f766e", foreground="#ffffff", font=("Segoe UI", 9, "bold"), spacing3=10, rmargin=15, lmargin1=120, lmargin2=120)
+        self.response_viewer.tag_configure("jarvis_header", justify="left", foreground=self.theme["primary"], font=("Segoe UI", 8, "bold"), spacing1=6)
+        self.response_viewer.tag_configure("jarvis_bubble", justify="left", background="#1e293b", foreground="#f8fafc", font=("Segoe UI", 9), spacing3=10, lmargin1=15, lmargin2=15, rmargin=120)
+        self.response_viewer.tag_configure("system_alert", justify="center", foreground=self.theme["warning"], font=("Segoe UI", 8, "italic"), spacing3=6)
+        
+        self.response_viewer.config(state=tk.NORMAL)
+        self.add_chat_message("jarvis", "Merhaba! ZEZELABS komut arayüzüne hoş geldiniz. Size nasıl yardımcı olabilirim?")
 
     def toggle_drawer(self):
         self.drawer_expanded = not self.drawer_expanded
@@ -711,7 +830,7 @@ class JarvisDesktopApp:
                 node_id = self.net_canvas.create_oval(x-6, y-6, x+6, y+6, fill=self.theme["background"], outline=self.theme["primary"], width=2)
                 # Save coordinate points
                 node_data = {
-                    "id": node_id, "x": x, "y": y, "layer": l_idx, "index": n_idx, 
+                    "id": node_id, "x": x, "y": y, "base_x": x, "base_y": y, "layer": l_idx, "index": n_idx, 
                     "base_r": 6, "pulse_phase": random.uniform(0, math.pi * 2),
                     "role": f"Agent_{l_idx}_{n_idx}",
                     "status": "AKTİF" if random.choice([True, True, False]) else "BOŞTA",
@@ -739,8 +858,11 @@ class JarvisDesktopApp:
         self.hover_text = self.net_canvas.create_text(0, 0, text="", fill=self.theme["text"], font=("Segoe UI", 8), state=tk.HIDDEN, justify=tk.LEFT)
         
         self.net_canvas.bind("<Motion>", self.on_neural_net_hover)
+        self.net_canvas.bind("<Leave>", self.on_neural_net_leave)
 
     def on_neural_net_hover(self, event):
+        self.mouse_x = event.x
+        self.mouse_y = event.y
         mx, my = event.x, event.y
         nearest_node = None
         min_dist = 15.0 # pixels threshold
@@ -752,6 +874,7 @@ class JarvisDesktopApp:
                 nearest_node = node
                 
         if nearest_node:
+            self.hovered_node = nearest_node
             # Highlight node on hover
             self.net_canvas.itemconfig(nearest_node["id"], outline=self.theme["accent"], width=3)
             
@@ -774,11 +897,25 @@ class JarvisDesktopApp:
             self.net_canvas.tag_raise(self.hover_rect)
             self.net_canvas.tag_raise(self.hover_text)
         else:
+            self.hovered_node = None
             # Restore all node styles
             for node in self.net_nodes:
                 self.net_canvas.itemconfig(node["id"], outline=self.theme["primary"], width=2)
             self.net_canvas.itemconfig(self.hover_rect, state=tk.HIDDEN)
             self.net_canvas.itemconfig(self.hover_text, state=tk.HIDDEN)
+
+    def on_neural_net_leave(self, event):
+        self.mouse_x = None
+        self.mouse_y = None
+        self.hovered_node = None
+
+    def on_fin_canvas_hover(self, event):
+        self.fin_mouse_x = event.x
+        self.fin_mouse_y = event.y
+
+    def on_fin_canvas_leave(self, event):
+        self.fin_mouse_x = None
+        self.fin_mouse_y = None
 
     # --- ANİMASYONLU SES DALGASI METOTLARI ---
     def draw_voice_waveform(self):
@@ -787,21 +924,33 @@ class JarvisDesktopApp:
         height = self.wave_canvas.winfo_height() or 85
         mid_y = height / 2
         
-        # Wave amplitude based on mic active status
-        max_amp = 30.0 if self.voice_active else 4.0
+        # Get dynamic volume peak from voice client streamer
+        live_amp = 0.0
+        if hasattr(self, "voice_streamer") and hasattr(self.voice_streamer, "voice_client"):
+            live_amp = self.voice_streamer.voice_client.last_amplitude
+            
+        # Organic wave amplitude with live volume scaling when active
+        if self.voice_active:
+            # Map [0, 1.0] live amplitude to [5, 40] height peak amplitude
+            max_amp = 5.0 + (live_amp * 90.0)
+            if max_amp > 42.0: max_amp = 42.0
+        else:
+            max_amp = 2.0
         
         # Overlapping Sine wave paths (Cyan & Magenta)
         points_cyan = []
         points_mag = []
         
         for x in range(0, width + 5, 5):
-            # Mathematical wave equation
             rad = (x / width) * math.pi * 3
-            # Wave 1
-            y_c = mid_y + max_amp * math.sin(rad + self.wave_phase) * math.cos(rad * 0.5)
+            envelope = math.sin((x / width) * math.pi) # Keeps the ends perfectly anchored at 0 amplitude
+            
+            # Wave 1 (Cyan): Multi-sine summation
+            y_c = mid_y + max_amp * envelope * (math.sin(rad + self.wave_phase) + 0.35 * math.sin(2.3 * rad - 1.5 * self.wave_phase) + 0.15 * math.sin(5.7 * rad))
             points_cyan.extend([x, y_c])
-            # Wave 2 (Phase shifted, opposite direction)
-            y_m = mid_y + (max_amp * 0.7) * math.sin(rad * 1.5 - self.wave_phase * 1.2) * math.sin(rad)
+            
+            # Wave 2 (Magenta): Shifted multi-sine summation
+            y_m = mid_y + (max_amp * 0.7) * envelope * (math.sin(rad * 1.5 - self.wave_phase * 1.2) + 0.35 * math.sin(3.1 * rad + self.wave_phase) + 0.2 * math.sin(4.5 * rad))
             points_mag.extend([x, y_m])
             
         if len(points_cyan) >= 4:
@@ -852,6 +1001,43 @@ class JarvisDesktopApp:
         pulse_r = 4 + 2 * math.sin(self.chart_step * 0.2)
         self.fin_canvas.create_oval(end_x - pulse_r, end_y - pulse_r, end_x + pulse_r, end_y + pulse_r, fill=self.theme["success"], width=0, tags="chart")
 
+        # Dynamic coordinate hover tooltips
+        fmx = getattr(self, "fin_mouse_x", None)
+        fmy = getattr(self, "fin_mouse_y", None)
+        if fmx is not None and fmy is not None:
+            # Find the nearest index horizontally
+            nearest_idx = 0
+            min_dist = 99999.0
+            for idx, pt in enumerate(coords):
+                dist = abs(pt[0] - fmx)
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_idx = idx
+            
+            if min_dist < 40:
+                px, py = coords[nearest_idx]
+                # Draw vertical dashed alignment guideline
+                self.fin_canvas.create_line(px, pad_y, px, height - pad_y, fill=self.theme["border"], dash=(4, 2), tags="chart")
+                # Draw pulsing highlight circle at the line node
+                self.fin_canvas.create_oval(px - 6, py - 6, px + 6, py + 6, fill="", outline=self.theme["success"], width=2, tags="chart")
+                self.fin_canvas.create_oval(px - 3, py - 3, px + 3, py + 3, fill=self.theme["success"], width=0, tags="chart")
+                
+                # Render sleek details tooltip card
+                val = seed_points[nearest_idx]
+                info_text = f"Zaman: T-{9-nearest_idx}\nROI: %{val*100:.1f}"
+                box_w, box_h = 100, 36
+                box_x = px + 10
+                box_y = py - 40
+                
+                # Keep box within canvas bounds
+                if box_x + box_w > width:
+                    box_x = px - box_w - 10
+                if box_y < 2:
+                    box_y = py + 10
+                    
+                self.fin_canvas.create_rectangle(box_x, box_y, box_x + box_w, box_y + box_h, fill="#0d1527", outline=self.theme["success"], width=1, tags="chart")
+                self.fin_canvas.create_text(box_x + 8, box_y + 18, text=info_text, fill=self.theme["text"], font=("Segoe UI", 8, "bold"), justify=tk.LEFT, anchor="w", tags="chart")
+
     def setup_mini_activity_graph(self):
         # A tiny decorative neon wave drawn on the header of activities
         self.act_graph_canvas.delete("all")
@@ -876,7 +1062,7 @@ class JarvisDesktopApp:
         pw = self.root.winfo_width()
         ph = self.root.winfo_height()
         
-        mw, mh = 480, 480
+        mw, mh = 480, 520
         mx = px + (pw - mw) // 2
         my = py + (ph - mh) // 2
         tw.wm_geometry(f"{mw}x{mh}+{mx}+{my}")
@@ -891,7 +1077,9 @@ class JarvisDesktopApp:
             "zeze_guard": "🛡️ ZEZE_GUARD CANLI METRİKLER",
             "zeze_sec": "🛡️ ZEZE_SEC CANLI METRİKLER",
             "zeze_rnd": "⚛️ ZEZE_RND CANLI METRİKLER",
-            "zeze_eng": "⚙️ ZEZE_ENG CANLI METRİKLER"
+            "zeze_eng": "⚙️ ZEZE_ENG CANLI METRİKLER",
+            "crypto_trading": "📈 ZEZE_TRADING CANLI METRİKLER",
+            "media_factory": "🎬 ZEZE_MEDIA CANLI METRİKLER"
         }
         dept_color = self.dept_widgets[dept_code]["color"]
         
@@ -926,7 +1114,9 @@ class JarvisDesktopApp:
             ("Toplam API Çağrısı:", "api_calls"),
             ("Başarı Oranı:", "success_rate"),
             ("Kuyruk Derinliği (RabbitMQ):", "queue_depth"),
-            ("Aktif Ajan Sayısı:", "active_agents")
+            ("Aktif Ajan Sayısı:", "active_agents"),
+            ("Broker Bağlantısı:", "rabbitmq_connection"),
+            ("Sistem Yükü:", "workload")
         ]
         
         for text, key in metric_labels:
@@ -937,6 +1127,12 @@ class JarvisDesktopApp:
             val_lbl.pack(side=tk.RIGHT)
             self.modal_labels[key] = val_lbl
             
+        # Warning notification view
+        self.audit_issues_lbl = tk.Label(
+            m_content, text="", font=("Segoe UI", 9, "italic"), bg=self.theme["background"], fg=self.theme["warning"], wraplength=440, justify="left"
+        )
+        self.audit_issues_lbl.pack(anchor="w", padx=15, pady=(8, 0))
+
         # Hardware Usage Bars
         lbl_hw_title = tk.Label(
             m_content, text="💻 TELEMETRİ / SİSTEM KAYNAKLARI", font=("Segoe UI", 9, "bold"), bg=self.theme["background"], fg=self.theme["primary"]
@@ -950,7 +1146,7 @@ class JarvisDesktopApp:
         for hw in ["CPU", "RAM", "GPU"]:
             row = tk.Frame(hw_box, bg=self.theme["background"])
             row.pack(fill=tk.X, pady=4)
-            tk.Label(row, text=f"{hw}:", font=("Segoe UI", 9), bg=self.theme["background"], fg=self.theme["text_muted"]).pack(side=tk.LEFT, width=5)
+            tk.Label(row, text=f"{hw}:", font=("Segoe UI", 9), bg=self.theme["background"], fg=self.theme["text_muted"], width=5).pack(side=tk.LEFT)
             
             # Progress bar canvas
             bar_c = tk.Canvas(row, height=8, bg=self.theme["border"], highlightthickness=0)
@@ -998,6 +1194,35 @@ class JarvisDesktopApp:
         self.modal_labels["queue_depth"].config(text=str(data["queue_depth"]))
         self.modal_labels["active_agents"].config(text=str(data["active_agents"]))
         
+        # Update dynamic audit statuses
+        audit_data = data.get("audit", {})
+        conn_status = audit_data.get("rabbitmq_connection", "FALLBACK_ACTIVE")
+        workload_status = audit_data.get("workload", "NORMAL")
+        issues_list = audit_data.get("issues", [])
+        
+        # Color coding connection badge
+        if conn_status == "CONNECTED":
+            self.modal_labels["rabbitmq_connection"].config(text="CONNECTED (Aktif)", fg="#10b981") # Emerald Green
+        elif conn_status == "FALLBACK_ACTIVE":
+            self.modal_labels["rabbitmq_connection"].config(text="FALLBACK_ACTIVE (Yedek Mod)", fg="#f59e0b") # Amber/Orange
+        else:
+            self.modal_labels["rabbitmq_connection"].config(text=conn_status, fg="#ef4444") # Red
+            
+        # Color coding workload badge
+        if workload_status == "CRITICAL":
+            self.modal_labels["workload"].config(text="CRITICAL (Kritik)", fg="#ef4444")
+        elif workload_status == "HIGH":
+            self.modal_labels["workload"].config(text="HIGH (Yüksek)", fg="#f59e0b")
+        else:
+            self.modal_labels["workload"].config(text="NORMAL (Normal)", fg="#10b981")
+            
+        # Update warning text
+        if issues_list:
+            warn_text = "⚠️ KRİTİK UYARILAR:\n" + "\n".join(f"- {issue}" for issue in issues_list)
+            self.audit_issues_lbl.config(text=warn_text, fg="#f59e0b")
+        else:
+            self.audit_issues_lbl.config(text="✔ Sistem durumu stabil. Aktif uyarı bulunmuyor.", fg="#10b981")
+
         # Update Hardware usage bars
         dept_color = self.dept_widgets[dept_code]["color"]
         for hw in ["CPU", "RAM", "GPU"]:
@@ -1025,13 +1250,28 @@ class JarvisDesktopApp:
             ).pack(side=tk.LEFT, padx=5)
             
             # Status badge
-            st_color = self.theme["success"] if ag["status"] in ["Ready", "Active", "Monitoring"] else self.theme["warning"]
+            st_color = self.theme["success"] if ag["status"] in ["Ready", "Active", "Monitoring", "Writing Code", "Deploying", "Running Tests"] else self.theme["warning"]
             tk.Label(
                 ag_row, text=ag["status"], font=("Segoe UI", 8, "bold"), bg=self.theme["background"], fg=st_color
             ).pack(side=tk.RIGHT, padx=5)
             tk.Label(
                 ag_row, text=f"{ag['tokens']:,} Tok", font=("Segoe UI", 8), bg=self.theme["background"], fg=self.theme["primary"]
             ).pack(side=tk.RIGHT)
+            
+            # 📊 Workload horizontal mini canvas bar next to agent's status
+            workload_c = tk.Canvas(ag_row, width=40, height=6, bg=self.theme["border"], highlightthickness=0)
+            workload_c.pack(side=tk.RIGHT, padx=8)
+            status_lower = ag["status"].lower()
+            if any(k in status_lower for k in ["ready", "active", "monitoring", "running", "writing"]):
+                w_color = "#10b981" # Emerald Green
+                fill_w = 40
+            elif any(k in status_lower for k in ["busy", "deploying", "analyzing", "scanning", "optimizing", "testing"]):
+                w_color = "#f59e0b" # Amber/Orange
+                fill_w = 25
+            else:
+                w_color = "#ef4444" # Crimson Red
+                fill_w = 10
+            workload_c.create_rectangle(0, 0, fill_w, 6, fill=w_color, width=0)
             
         # Recursive loop call every 2.5s
         self.root.after(2500, lambda: self.update_modal_telemetry(window, dept_code))
@@ -1049,6 +1289,12 @@ class JarvisDesktopApp:
                 "cpu": f"{random.randint(15, 60)}%",
                 "ram": f"{random.randint(70, 190)} MB",
                 "gpu": f"{random.randint(0, 40)}%"
+            },
+            "audit": {
+                "rabbitmq_connection": "FALLBACK_ACTIVE",
+                "config_status": "OK",
+                "issues": ["RabbitMQ broker pasif, yerel fallback kuyrukları kullanılıyor."] if dept_code == "zeze_eng" else [],
+                "workload": "NORMAL"
             },
             "agents_list": []
         }
@@ -1077,6 +1323,17 @@ class JarvisDesktopApp:
             res["agents_list"] = [
                 {"name": "Dev Lead", "role": "Code Synthesis & Refactor", "status": "Writing Code", "tokens": random.randint(100000, 160000)},
                 {"name": "RabbitMQ Integrator", "role": "Message Broker Setup", "status": "Deploying", "tokens": random.randint(40000, 70000)}
+            ]
+        elif dept_code == "crypto_trading":
+            res["agents_list"] = [
+                {"name": "Market Scanner", "role": "Order Book Liquidity Monitor", "status": "Monitoring", "tokens": random.randint(150000, 220000)},
+                {"name": "Risk Evaluator", "role": "Leverage & Margin Guard", "status": "Ready", "tokens": random.randint(80000, 110000)},
+                {"name": "Execution Bot", "role": "Smart Order Routing", "status": "Idle", "tokens": random.randint(50000, 70000)}
+            ]
+        elif dept_code == "media_factory":
+            res["agents_list"] = [
+                {"name": "Content Generator", "role": "Video Synthesis & Rendering", "status": "Rendering", "tokens": random.randint(40000, 60000)},
+                {"name": "Asset Pipeline", "role": "Post-processing & Metadata", "status": "Idle", "tokens": random.randint(10000, 15000)}
             ]
             
         return res
@@ -1148,14 +1405,22 @@ class JarvisDesktopApp:
         )
         save_btn.pack(fill=tk.X, side=tk.BOTTOM, padx=15)
 
+    def toggle_mic(self):
+        if hasattr(self, "mic_toggle"):
+            self.mic_toggle.toggle()
+
     def on_mic_toggle(self, state):
         self.voice_active = state
         if self.voice_active:
             self.voice_status_lbl.config(text="DURUM: DİNLİYOR", fg=self.theme["primary"])
             self.append_log("[INFO] Canlı ses kanalı mikrofonu açıldı.")
+            if hasattr(self, "voice_streamer"):
+                self.voice_streamer.start_mic_stream()
         else:
             self.voice_status_lbl.config(text="DURUM: AKTİF", fg=self.theme["success"])
             self.append_log("[INFO] Canlı ses kanalı mikrofonu kapatıldı.")
+            if hasattr(self, "voice_streamer"):
+                self.voice_streamer.stop_mic_stream()
 
     # --- ANİMASYON EVENT LOOP (Thread-Safe trigger) ---
     def animate_loop(self):
@@ -1186,38 +1451,100 @@ class JarvisDesktopApp:
             pass
 
     def animate_neural_network(self):
-        # Pulse nodes
+        # Delete previous glows
+        self.net_canvas.delete("glow")
+        
+        # 1. Update Node positions with gravitational mouse warping
         for node in self.net_nodes:
+            if getattr(self, "mouse_x", None) is not None and getattr(self, "mouse_y", None) is not None:
+                dx = self.mouse_x - node["base_x"]
+                dy = self.mouse_y - node["base_y"]
+                dist = math.hypot(dx, dy)
+                if dist < 85:
+                    warp_factor = (85 - dist) / 85
+                    target_x = node["base_x"] + dx * warp_factor * 0.25
+                    target_y = node["base_y"] + dy * warp_factor * 0.25
+                else:
+                    target_x = node["base_x"]
+                    target_y = node["base_y"]
+            else:
+                target_x = node["base_x"]
+                target_y = node["base_y"]
+            
+            # Smooth elastic interpolation
+            node["x"] += (target_x - node["x"]) * 0.15
+            node["y"] += (target_y - node["y"]) * 0.15
+            
+            # Pulse ovals
             node["pulse_phase"] += 0.05
             offset = math.sin(node["pulse_phase"]) * 1.5
             r = node["base_r"] + offset
             self.net_canvas.coords(node["id"], node["x"] - r, node["y"] - r, node["x"] + r, node["y"] + r)
+
+        # Draw double glowing rings around hovered_node
+        if getattr(self, "hovered_node", None) is not None:
+            if not hasattr(self, "glow_phase"):
+                self.glow_phase = 0.0
+            self.glow_phase += 0.15
             
-        # Emit signal particles along connected lines periodically
+            hx = self.hovered_node["x"]
+            hy = self.hovered_node["y"]
+            hr = self.hovered_node["base_r"]
+            
+            glow_expand1 = hr * 1.5 + math.sin(self.glow_phase) * 3
+            glow_expand2 = hr * 3.0 + math.cos(self.glow_phase) * 5
+            
+            # Outer ring: pink/magenta neon glow
+            self.net_canvas.create_oval(
+                hx - glow_expand2, hy - glow_expand2, 
+                hx + glow_expand2, hy + glow_expand2, 
+                outline="#ff007f", width=1, tags="glow"
+            )
+            # Inner ring: turquoise/cyan neon glow
+            self.net_canvas.create_oval(
+                hx - glow_expand1, hy - glow_expand1, 
+                hx + glow_expand1, hy + glow_expand1, 
+                outline="#00ffcc", width=2, tags="glow"
+            )
+            self.net_canvas.tag_lower("glow")
+
+        # 2. Update Synapse line coordinates
+        for conn in self.net_connections:
+            self.net_canvas.coords(
+                conn["id"], 
+                conn["start_node"]["x"], conn["start_node"]["y"], 
+                conn["end_node"]["x"], conn["end_node"]["y"]
+            )
+
+        # 3. Emit signal particles along connected lines periodically
         if self.chart_step % 25 == 0 and len(self.net_connections) > 0:
-            # Randomly select a synapse/connection line to spawn data packet particle
             conn = random.choice(self.net_connections)
-            p_id = self.net_canvas.create_oval(conn["start_node"]["x"] - 2.5, conn["start_node"]["y"] - 2.5, conn["start_node"]["x"] + 2.5, conn["start_node"]["y"] + 2.5, fill=self.theme["success"], width=0)
+            p_id = self.net_canvas.create_oval(
+                conn["start_node"]["x"] - 2.5, conn["start_node"]["y"] - 2.5, 
+                conn["start_node"]["x"] + 2.5, conn["start_node"]["y"] + 2.5, 
+                fill=self.theme["success"], width=0
+            )
             self.net_particles.append({
-                "id": p_id, "start_x": conn["start_node"]["x"], "start_y": conn["start_node"]["y"],
-                "end_x": conn["end_node"]["x"], "end_y": conn["end_node"]["y"], "progress": 0.0
+                "id": p_id, 
+                "start_node": conn["start_node"], 
+                "end_node": conn["end_node"], 
+                "progress": 0.0
             })
             
-        # Update active particle positions
+        # 4. Update active particle positions
         active_p = []
         for p in self.net_particles:
             p["progress"] += 0.045
             if p["progress"] >= 1.0:
-                # Remove particle from canvas
                 self.net_canvas.delete(p["id"])
             else:
-                x = p["start_x"] + (p["end_x"] - p["start_x"]) * p["progress"]
-                y = p["start_y"] + (p["end_y"] - p["start_y"]) * p["progress"]
+                x = p["start_node"]["x"] + (p["end_node"]["x"] - p["start_node"]["x"]) * p["progress"]
+                y = p["start_node"]["y"] + (p["end_node"]["y"] - p["start_node"]["y"]) * p["progress"]
                 self.net_canvas.coords(p["id"], x - 2.5, y - 2.5, x + 2.5, y + 2.5)
                 active_p.append(p)
         self.net_particles = active_p
         
-        # Pulse circles inside department buttons
+        # 5. Pulse circles inside department buttons (Centered at (18, 26) on the compact canvas)
         for code, dept in self.dept_widgets.items():
             dept["pulse_val"] += dept["pulse_dir"] * 0.1
             if dept["pulse_val"] > 1.0:
@@ -1226,7 +1553,7 @@ class JarvisDesktopApp:
                 dept["pulse_dir"] = 1
                 
             opacity_r = 2.5 + dept["pulse_val"] * 1.5
-            dept["canvas"].coords(dept["dot"], 24 - opacity_r, 32 - opacity_r, 24 + opacity_r, 32 + opacity_r)
+            dept["canvas"].coords(dept["dot"], 18 - opacity_r, 26 - opacity_r, 18 + opacity_r, 26 + opacity_r)
 
     # --- TELEMETRİ / BACKEND HEALTH GÜNCELLEMELERİ ---
     def update_telemetry_loop(self):
@@ -1235,17 +1562,83 @@ class JarvisDesktopApp:
             offset = random.uniform(-1.5, 1.5)
             self.memory_lbl.config(text=f"Memory: {base + offset:.1f} MB / 512 MB")
             
-            # Wiggle API balance slightly to look live
-            bal_wiggle = random.uniform(-0.1, 0.1)
             # Fetch backend status to double check online state
             self.check_status()
+            
+            # Dynamically update department cards from backend
+            self.update_dashboard_departments()
         except Exception:
             pass
         self.root.after(3000, self.update_telemetry_loop)
 
+    def update_dashboard_departments(self):
+        def worker():
+            updates = {}
+            for code in list(self.dept_widgets.keys()):
+                try:
+                    resp = httpx.get(f"http://{self.launcher.host}:{self.launcher.port}/api/departments/{code}/status", timeout=0.8)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        status_val = data.get("status", "AKTİF")
+                        uptime = data.get("uptime", "99.9%")
+                        active_agents = data.get("active_agents", 0)
+                        
+                        orig_color = self.dept_widgets[code]["color"]
+                        
+                        if status_val in ["MEŞGÜL", "MEŞGUL"]:
+                            status_text = f"MEŞGUL | {active_agents} Ajan Aktif"
+                            color = "#f59e0b"  # Amber/Orange for Busy
+                        elif status_val == "TARANIYOR":
+                            status_text = f"TARANIYOR | {active_agents} Ajan"
+                            color = "#eab308"  # Yellow for Scanning
+                        elif status_val == "AKTİF":
+                            status_text = f"AKTİF | {uptime} Optimize"
+                            color = "#10b981"  # Emerald Green for Active
+                        else:
+                            status_text = status_val
+                            color = orig_color
+                            
+                        updates[code] = {
+                            "text": status_text,
+                            "color": color,
+                            "online": True
+                        }
+                except Exception:
+                    updates[code] = {
+                        "text": "ÇEVRİMDIŞI | Bağlantı Yok",
+                        "color": "#ef4444",  # Red for Offline
+                        "online": False
+                    }
+            
+            try:
+                if self.root.winfo_exists():
+                    self.root.after(0, lambda: self.apply_department_updates(updates))
+            except Exception:
+                pass
+                
+        threading.Thread(target=worker, daemon=True).start()
+
+    def apply_department_updates(self, updates):
+        for code, info in updates.items():
+            if code in self.dept_widgets:
+                widget_info = self.dept_widgets[code]
+                lbl = widget_info["lbl_status"]
+                lbl.config(text=info["text"], fg=info["color"])
+                
+                dot_color = info["color"] if not info["online"] else widget_info["color"]
+                widget_info["canvas"].itemconfig(widget_info["dot"], fill=dot_color)
     def check_status(self):
+        def worker():
+            try:
+                status = self.launcher.health_check()
+                if self.root.winfo_exists():
+                    self.root.after(0, lambda: self.apply_status_update(status))
+            except Exception:
+                pass
+        threading.Thread(target=worker, daemon=True).start()
+
+    def apply_status_update(self, status):
         try:
-            status = self.launcher.health_check()
             if status["status"] == "online":
                 data = status.get("data", {})
                 self.badge_canvas.itemconfig(self.status_circle, fill=self.theme["success"])
@@ -1253,10 +1646,16 @@ class JarvisDesktopApp:
                 
                 ai_mode = data.get("ai_mode", "hybrid_deepseek_hermes")
                 self.ai_mode_lbl.config(text=f"AI Mode: {ai_mode}", fg=self.theme["primary"])
+                
+                # Bind dynamic API Balance
+                balance = data.get("openrouter_balance", "$1,450.00")
+                sub = data.get("subscription", "Standart 2TB")
+                self.kpi_lbl.config(text=f"API BAKİYESİ: {balance} (OPENROUTER)  |  Abonelik: {sub}")
             else:
                 self.badge_canvas.itemconfig(self.status_circle, fill=self.theme["error"])
                 self.status_text_lbl.config(text="Offline", fg=self.theme["text_muted"])
                 self.ai_mode_lbl.config(text="AI Mode: offline", fg=self.theme["text_muted"])
+                self.kpi_lbl.config(text="API BAKİYESİ: Çevrimdışı (OPENROUTER)  |  Abonelik: Çevrimdışı")
         except Exception:
             pass
 
@@ -1276,40 +1675,118 @@ class JarvisDesktopApp:
     def open_matrix(self):
         webbrowser.open("http://127.0.0.1:8502")
 
-    def send_task(self):
-        task = self.input_entry.get()
-        if not task or task == "Jarvis'e görev ver":
-            messagebox.showwarning("Warning", "Lütfen geçerli bir görev girin.")
+    def add_chat_message(self, sender, text):
+        self.response_viewer.config(state=tk.NORMAL)
+        if sender == "user":
+            self.response_viewer.insert(tk.END, "👤 KULLANICI\n", "user_header")
+            self.response_viewer.insert(tk.END, f"  {text}   ✓✓  \n\n", "user_bubble")
+        elif sender == "jarvis":
+            self.response_viewer.insert(tk.END, "⚡ JARVIS\n", "jarvis_header")
+            self.response_viewer.insert(tk.END, f"  {text}  \n\n", "jarvis_bubble")
+        else: # system
+            self.response_viewer.insert(tk.END, f"⚠️ {text}\n\n", "system_alert")
+        self.response_viewer.see(tk.END)
+        self.response_viewer.config(state=tk.DISABLED)
+
+    def send_voice_text_task(self, task):
+        if not task:
             return
             
-        try:
-            self.response_viewer.config(state=tk.NORMAL)
-            self.response_viewer.delete("1.0", tk.END)
-            self.response_viewer.insert(tk.END, "{\n  \"status\": \"processing\",\n  \"task\": \"" + task + "\"\n}")
-            self.response_viewer.config(state=tk.DISABLED)
+        # Show "thinking..." status bubbles in Chat
+        self.response_viewer.config(state=tk.NORMAL)
+        thinking_index = self.response_viewer.index(tk.END + "-1c")
+        self.response_viewer.insert(tk.END, "⚡ JARVIS: Düşünüyor...\n", "jarvis_header")
+        self.response_viewer.insert(tk.END, " • • • \n\n", "jarvis_bubble")
+        self.response_viewer.see(tk.END)
+        self.response_viewer.config(state=tk.DISABLED)
+        
+        # Start a background thread to send the HTTP post request asynchronously
+        threading.Thread(target=self._async_send_task, args=(task, thinking_index), daemon=True).start()
+
+    def send_task(self, event=None):
+        task = self.input_entry.get()
+        if not task or task == "Jarvis'e görev ver":
+            messagebox.showwarning("Uyarı", "Lütfen geçerli bir görev girin.")
+            return
             
+        self.add_chat_message("user", task)
+        self.input_entry.delete(0, tk.END)
+        
+        # Show "thinking..." status bubbles in Chat
+        self.response_viewer.config(state=tk.NORMAL)
+        thinking_index = self.response_viewer.index(tk.END + "-1c")
+        self.response_viewer.insert(tk.END, "⚡ JARVIS: Düşünüyor...\n", "jarvis_header")
+        self.response_viewer.insert(tk.END, " • • • \n\n", "jarvis_bubble")
+        self.response_viewer.see(tk.END)
+        self.response_viewer.config(state=tk.DISABLED)
+        
+        # Start a background thread to send the HTTP post request asynchronously (no UI lockup!)
+        threading.Thread(target=self._async_send_task, args=(task, thinking_index), daemon=True).start()
+
+    def _async_send_task(self, task, thinking_index):
+        try:
             resp = httpx.post(
-                f"http://{self.launcher.host}:{self.launcher.port}/api/jarvis/task", 
-                json={"task": task, "dry_run": True}, 
+                f"http://{self.launcher.host}:{self.launcher.port}/api/jarvis/chat", 
+                json={"message": task}, 
                 timeout=10
             )
-            
             resp_data = resp.json()
-            formatted_json = json.dumps(resp_data, indent=2, ensure_ascii=False)
-            
-            self.response_viewer.config(state=tk.NORMAL)
-            self.response_viewer.delete("1.0", tk.END)
-            self.response_viewer.insert(tk.END, formatted_json)
-            self.response_viewer.config(state=tk.DISABLED)
-            
-            self.append_log(f"[SUCCESS] Görev tamamlandı (Dry Run): {task}")
-            messagebox.showinfo("Result", "Görev başarıyla gönderildi (Dry Run).")
+            self.root.after(0, self._resolve_task_response, resp_data, thinking_index, task)
         except Exception as e:
+            self.root.after(0, self._resolve_task_error, str(e), thinking_index, task)
+
+    def _resolve_task_response(self, resp_data, thinking_index, task):
+        # Remove thinking/waiting lines
+        try:
             self.response_viewer.config(state=tk.NORMAL)
-            self.response_viewer.delete("1.0", tk.END)
-            self.response_viewer.insert(tk.END, "{\n  \"error\": \"" + str(e).replace('"', '\\"') + "\"\n}")
+            self.response_viewer.delete(thinking_index, tk.END)
             self.response_viewer.config(state=tk.DISABLED)
-            self.append_log(f"[ERROR] Görev iletimi başarısız: {e}")
+        except Exception:
+            pass
+        
+        if "response" in resp_data:
+            reply = resp_data["response"]
+        elif "result" in resp_data:
+            reply = resp_data["result"]
+        elif "success" in resp_data:
+            status_txt = "BAŞARILI" if resp_data["success"] else "BAŞARISIZ"
+            reply = f"Görev Durumu: {status_txt}\nGörev ID: {resp_data.get('task_id', 'N/A')}\nÇalışma Modu: {resp_data.get('provider_mode', 'hybrid')}\n"
+            if resp_data.get("created_files"):
+                reply += f"Oluşturulan Dosyalar:\n" + "\n".join(f"- {f}" for f in resp_data["created_files"])
+            else:
+                reply += "Yeni dosya oluşturulmadı."
+        else:
+            reply = json.dumps(resp_data, indent=2, ensure_ascii=False)
+            
+        self.add_chat_message("jarvis", reply)
+        self.append_log(f"[SUCCESS] Görev tamamlandı: {task}")
+        
+        # Trigger Jarvis to speak the reply
+        if hasattr(self, "voice_streamer") and hasattr(self.voice_streamer, "tts"):
+            async def _speak():
+                try:
+                    async for chunk in self.voice_streamer.tts.stream_speak(reply):
+                        if chunk and chunk != b"[SIMULATION]":
+                            await self.voice_streamer.voice_client.play_audio_chunk(chunk)
+                except Exception as e:
+                    self.append_log(f"[WARNING] Ses sentezi hatası: {e}")
+            
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(_speak())
+            except RuntimeError:
+                threading.Thread(target=lambda: asyncio.run(_speak()), daemon=True).start()
+    def _resolve_task_error(self, err_msg, thinking_index, task):
+        # Remove thinking/waiting lines
+        try:
+            self.response_viewer.config(state=tk.NORMAL)
+            self.response_viewer.delete(thinking_index, tk.END)
+            self.response_viewer.config(state=tk.DISABLED)
+        except Exception:
+            pass
+        
+        self.add_chat_message("system", f"Görev iletimi başarısız: {err_msg}")
+        self.append_log(f"[ERROR] Görev iletimi başarısız: {err_msg}")
 
     # --- SSE LOG AKIŞINI YAKALAMA VE DİNAMİK DEPARTMAN GÜNCELLEMELERİ ---
     def on_log_received(self, log_msg):
