@@ -1036,6 +1036,10 @@ async def websocket_endpoint(ws: WebSocket):
             if msg.get("type") in ["command", "chat"]: engine_thread(content)
             if msg.get("type") == "mic_toggle" and ear: ear.enabled = msg.get("val")
             if msg.get("type") == "voice_toggle": voice_state.enabled = msg.get("val")
+            if msg.get("type") == "mic_pcm":
+                peak_val = msg.get("val", 0.0)
+                if peak_val > 0.05:  # Voice Barge-in: Threshold > 0.05 (approx. -40dB user voice activity)
+                    kill_active_tts()
     except WebSocketDisconnect: manager.disconnect(ws)
 
 import os
