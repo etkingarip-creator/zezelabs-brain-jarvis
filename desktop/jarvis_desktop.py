@@ -9,7 +9,7 @@ import asyncio
 import httpx
 
 from PySide6.QtCore import Qt, QPoint, QTimer, QSize, QUrl, Signal, QObject
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath, QLinearGradient, QIcon
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath, QLinearGradient, QIcon, QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QFrame, QLabel, QPushButton, QLineEdit, QListWidget, QListWidgetItem,
@@ -509,7 +509,19 @@ class JarvisPySideMainWindow(QMainWindow):
         self.setup_ui()
         self.setup_system_tray()
         self.setup_websocket_connection()
+        self.setup_global_shortcuts()
         
+    def setup_global_shortcuts(self):
+        self.shortcut_toggle = QShortcut(QKeySequence("Ctrl+Shift+J"), self)
+        self.shortcut_toggle.activated.connect(self.toggle_window_visibility)
+        
+    def toggle_window_visibility(self):
+        if self.isVisible() and not self.isMinimized():
+            self.hide()
+        else:
+            self.showNormal()
+            self.activateWindow()
+
     def setup_system_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
         base_dir = os.path.dirname(os.path.abspath(__file__))
