@@ -486,12 +486,24 @@ class JarvisDesktopApp:
             lbl_status.bind("<Button-1>", make_dept_callback(code))
             
             # Hover bindings to simulate a glowing border highlight
-            def on_card_enter(e, widget=card, canv=left_canvas, c_id=circle_id, clr=color):
-                widget.config(highlightbackground=clr)
+            # Hover bindings to simulate a glowing border highlight
+            def on_card_enter(e, widget=card, canv=left_canvas, c_id=circle_id, clr=color, t_f=text_frame, l_t=lbl_title, l_r=lbl_role, l_s=lbl_status):
+                hover_bg = "#0f233a" if clr == "#38bdf8" or clr == "#00f0ff" or clr == "#06b6d4" else "#201128"
+                widget.config(highlightbackground=clr, bg=hover_bg)
+                canv.config(bg=hover_bg)
+                t_f.config(bg=hover_bg)
+                l_t.config(bg=hover_bg)
+                l_r.config(bg=hover_bg)
+                l_s.config(bg=hover_bg)
                 canv.itemconfig(c_id, fill=clr, width=3)
                 
-            def on_card_leave(e, widget=card, canv=left_canvas, c_id=circle_id):
-                widget.config(highlightbackground=self.theme["border"])
+            def on_card_leave(e, widget=card, canv=left_canvas, c_id=circle_id, t_f=text_frame, l_t=lbl_title, l_r=lbl_role, l_s=lbl_status):
+                widget.config(highlightbackground=self.theme["border"], bg=self.theme["surface"])
+                canv.config(bg=self.theme["surface"])
+                t_f.config(bg=self.theme["surface"])
+                l_t.config(bg=self.theme["surface"])
+                l_r.config(bg=self.theme["surface"])
+                l_s.config(bg=self.theme["surface"])
                 canv.itemconfig(c_id, fill=self.theme["background"], width=2)
                 
             card.bind("<Enter>", on_card_enter)
@@ -788,7 +800,7 @@ class JarvisDesktopApp:
         
         # Configure paragraph bubble tag layouts
         self.response_viewer.tag_configure("user_header", justify="right", foreground=self.theme["text_muted"], font=("Segoe UI", 8, "bold"), spacing1=6)
-        self.response_viewer.tag_configure("user_bubble", justify="right", background="#0f766e", foreground="#ffffff", font=("Segoe UI", 9, "bold"), spacing3=10, rmargin=15, lmargin1=120, lmargin2=120)
+        self.response_viewer.tag_configure("user_bubble", justify="right", background="#db2777", foreground="#ffffff", font=("Segoe UI", 9, "bold"), spacing3=10, rmargin=15, lmargin1=120, lmargin2=120)
         self.response_viewer.tag_configure("jarvis_header", justify="left", foreground=self.theme["primary"], font=("Segoe UI", 8, "bold"), spacing1=6)
         self.response_viewer.tag_configure("jarvis_bubble", justify="left", background="#1e293b", foreground="#f8fafc", font=("Segoe UI", 9), spacing3=10, lmargin1=15, lmargin2=15, rmargin=120)
         self.response_viewer.tag_configure("system_alert", justify="center", foreground=self.theme["warning"], font=("Segoe UI", 8, "italic"), spacing3=6)
@@ -810,15 +822,24 @@ class JarvisDesktopApp:
         btn = tk.Button(
             parent, text=text, command=command, bg=bg, fg=fg,
             font=("Segoe UI", 9, "bold"), relief="flat", bd=0, cursor="hand2", padx=15, pady=6,
-            activebackground=self.theme["border"], activeforeground=fg
+            activebackground=self.theme["border"], activeforeground=fg,
+            highlightthickness=1, highlightbackground=bg
         )
-        h_bg = self.theme["primary"] if bg == self.theme["border"] else self.theme["border"]
-        h_fg = self.theme["background"] if h_bg == self.theme["primary"] else fg
         
+        # Determine premium hover transition states
+        if bg == self.theme["primary"]:
+            h_bg = self.theme["accent"] # Neon Pink
+            h_fg = "#ffffff"
+            h_outline = self.theme["accent"]
+        else:
+            h_bg = self.theme["primary"] # Neon Turquoise/Cyan
+            h_fg = self.theme["background"]
+            h_outline = self.theme["primary"]
+            
         def on_enter(e):
-            btn.config(bg=h_bg, fg=h_fg)
+            btn.config(bg=h_bg, fg=h_fg, highlightbackground=h_outline)
         def on_leave(e):
-            btn.config(bg=bg, fg=fg)
+            btn.config(bg=bg, fg=fg, highlightbackground=bg)
             
         btn.bind("<Enter>", on_enter)
         btn.bind("<Leave>", on_leave)
@@ -879,7 +900,7 @@ class JarvisDesktopApp:
         
         # Tags for bubbles
         self.chat_history_viewer.tag_configure("user_header", justify="right", foreground=self.theme["text_muted"], font=("Segoe UI", 8, "bold"), spacing1=8)
-        self.chat_history_viewer.tag_configure("user_bubble", justify="right", background="#0f766e", foreground="#ffffff", font=("Segoe UI", 10, "bold"), spacing3=12, rmargin=20, lmargin1=150, lmargin2=150)
+        self.chat_history_viewer.tag_configure("user_bubble", justify="right", background="#db2777", foreground="#ffffff", font=("Segoe UI", 10, "bold"), spacing3=12, rmargin=20, lmargin1=150, lmargin2=150)
         self.chat_history_viewer.tag_configure("jarvis_header", justify="left", foreground=self.theme["primary"], font=("Segoe UI", 8, "bold"), spacing1=8)
         self.chat_history_viewer.tag_configure("jarvis_bubble", justify="left", background="#1e293b", foreground="#f8fafc", font=("Segoe UI", 10), spacing3=12, lmargin1=20, lmargin2=20, rmargin=150)
         self.chat_history_viewer.tag_configure("system_alert", justify="center", foreground=self.theme["warning"], font=("Segoe UI", 9, "italic"), spacing3=8)
@@ -947,7 +968,7 @@ class JarvisDesktopApp:
             lbl_name.pack(anchor="w", padx=12, pady=(8, 2))
             
             lbl_desc = tk.Label(
-                card, text=cmd_txt[:45] + "...", font=("Segoe UI", 8), 
+                card, text=cmd_txt, font=("Segoe UI", 8), 
                 bg=self.theme["surface"], fg=self.theme["text_muted"], wrap=250, justify=tk.LEFT, cursor="hand2"
             )
             lbl_desc.pack(anchor="w", padx=12, pady=(0, 8))
@@ -961,10 +982,14 @@ class JarvisDesktopApp:
             lbl_desc.bind("<Button-1>", make_cmd_callback())
             
             # Hover highlight glow
-            def on_cmd_enter(e, c=card):
-                c.config(highlightbackground=self.theme["primary"])
-            def on_cmd_leave(e, c=card):
-                c.config(highlightbackground=self.theme["border"])
+            def on_cmd_enter(e, c=card, l_n=lbl_name, l_d=lbl_desc):
+                c.config(highlightbackground=self.theme["accent"], bg="#1c0d24")
+                l_n.config(bg="#1c0d24", fg=self.theme["accent"])
+                l_d.config(bg="#1c0d24")
+            def on_cmd_leave(e, c=card, l_n=lbl_name, l_d=lbl_desc):
+                c.config(highlightbackground=self.theme["border"], bg=self.theme["surface"])
+                l_n.config(bg=self.theme["surface"], fg=self.theme["text"])
+                l_d.config(bg=self.theme["surface"])
                 
             card.bind("<Enter>", on_cmd_enter)
             card.bind("<Leave>", on_cmd_leave)
@@ -991,7 +1016,7 @@ class JarvisDesktopApp:
         self.chat_history_viewer.config(state=tk.NORMAL)
         if sender == "user":
             self.chat_history_viewer.insert(tk.END, "👤 KULLANICI\n", "user_header")
-            self.chat_history_viewer.insert(tk.END, f"  {text}   ✓✓  \n\n", "user_bubble")
+            self.chat_history_viewer.insert(tk.END, f"  {text}   ⚡  \n\n", "user_bubble")
         elif sender == "jarvis":
             self.chat_history_viewer.insert(tk.END, "⚡ JARVIS\n", "jarvis_header")
             self.chat_history_viewer.insert(tk.END, f"  {text}  \n\n", "jarvis_bubble")
@@ -1161,6 +1186,7 @@ class JarvisDesktopApp:
         # Active hover data display inside neural network
         self.hover_rect = self.net_canvas.create_rectangle(0, 0, 0, 0, fill="#0d1527", outline=self.theme["primary"], width=1, state=tk.HIDDEN)
         self.hover_text = self.net_canvas.create_text(0, 0, text="", fill=self.theme["text"], font=("Segoe UI", 8), state=tk.HIDDEN, justify=tk.LEFT)
+        self.hud_text = self.net_canvas.create_text(260, 25, text="AĞ VERİMİ: %98.4\nGECİKME: 32ms", fill=self.theme["primary"], font=("Segoe UI", 8, "bold"), justify=tk.RIGHT)
         
         self.net_canvas.bind("<Motion>", self.on_neural_net_hover)
         self.net_canvas.bind("<Leave>", self.on_neural_net_leave)
@@ -1242,9 +1268,10 @@ class JarvisDesktopApp:
         else:
             max_amp = 2.0
         
-        # Overlapping Sine wave paths (Cyan & Magenta)
+        # Overlapping Sine wave paths (Cyan, Magenta, Gold/Amber)
         points_cyan = []
         points_mag = []
+        points_gold = []
         
         for x in range(0, width + 5, 5):
             rad = (x / width) * math.pi * 3
@@ -1257,7 +1284,13 @@ class JarvisDesktopApp:
             # Wave 2 (Magenta): Shifted multi-sine summation
             y_m = mid_y + (max_amp * 0.7) * envelope * (math.sin(rad * 1.5 - self.wave_phase * 1.2) + 0.35 * math.sin(3.1 * rad + self.wave_phase) + 0.2 * math.sin(4.5 * rad))
             points_mag.extend([x, y_m])
+
+            # Wave 3 (Gold/Amber): Slow waving third background layer
+            y_g = mid_y + (max_amp * 0.45) * envelope * (math.sin(rad * 0.8 + self.wave_phase * 0.7) + 0.25 * math.sin(1.7 * rad - self.wave_phase) + 0.1 * math.sin(3.2 * rad))
+            points_gold.extend([x, y_g])
             
+        if len(points_gold) >= 4:
+            self.wave_canvas.create_line(points_gold, fill="#f59e0b", width=1, tags="wave", smooth=True)
         if len(points_cyan) >= 4:
             self.wave_canvas.create_line(points_cyan, fill=self.theme["primary"], width=2, tags="wave", smooth=True)
         if len(points_mag) >= 4:
@@ -1826,13 +1859,20 @@ class JarvisDesktopApp:
                 conn["end_node"]["x"], conn["end_node"]["y"]
             )
 
+        # Update dynamic HUD text on canvas
+        if self.chart_step % 15 == 0:
+            latency = random.randint(24, 38)
+            throughput = random.uniform(97.8, 99.4)
+            self.net_canvas.itemconfig(self.hud_text, text=f"AĞ VERİMİ: %{throughput:.1f}\nGECİKME: {latency}ms")
+
         # 3. Emit signal particles along connected lines periodically
-        if self.chart_step % 25 == 0 and len(self.net_connections) > 0:
+        if self.chart_step % 8 == 0 and len(self.net_connections) > 0:
             conn = random.choice(self.net_connections)
+            color = self.theme["primary"] if random.choice([True, False]) else self.theme["accent"]
             p_id = self.net_canvas.create_oval(
                 conn["start_node"]["x"] - 2.5, conn["start_node"]["y"] - 2.5, 
                 conn["start_node"]["x"] + 2.5, conn["start_node"]["y"] + 2.5, 
-                fill=self.theme["success"], width=0
+                fill=color, width=0
             )
             self.net_particles.append({
                 "id": p_id, 
@@ -1989,7 +2029,7 @@ class JarvisDesktopApp:
         self.response_viewer.config(state=tk.NORMAL)
         if sender == "user":
             self.response_viewer.insert(tk.END, "👤 KULLANICI\n", "user_header")
-            self.response_viewer.insert(tk.END, f"  {text}   ✓✓  \n\n", "user_bubble")
+            self.response_viewer.insert(tk.END, f"  {text}   ⚡  \n\n", "user_bubble")
         elif sender == "jarvis":
             self.response_viewer.insert(tk.END, "⚡ JARVIS\n", "jarvis_header")
             self.response_viewer.insert(tk.END, f"  {text}  \n\n", "jarvis_bubble")
