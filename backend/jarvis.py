@@ -739,11 +739,16 @@ async def stream_logs():
                     
     return StreamingResponse(log_generator(), media_type="text/event-stream")
 
+@app.get("/health")
+async def health_check():
+    return {"status": "online"}
+
 @app.get("/api/runtime/zeze-guard/snapshot")
 async def get_guard_snapshot():
     return {"snapshot": "ZezeGuard is active", "frozen_departments": []}
 
 @app.post("/api/jarvis/task")
+@app.post("/task")
 async def post_task(req: TaskRequest):
     goal = req.resolved_goal()
     if not goal:
@@ -780,6 +785,7 @@ async def post_task(req: TaskRequest):
     return {"result": response, "dry_run": req.dry_run}
 
 @app.post("/api/jarvis/chat")
+@app.post("/chat")
 async def jarvis_chat(payload: ChatMessage):
     try:
         goal = payload.message.strip()
