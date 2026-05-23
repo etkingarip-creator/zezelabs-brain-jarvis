@@ -232,7 +232,7 @@ export default function App() {
                         <button onClick={toggleVoice} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${voiceEnabled?'bg-cyan-500/20':'bg-white/5'}`}>
                            {voiceEnabled ? <Volume2 className="w-5 h-5 text-cyan-400" /> : <VolumeX className="w-5 h-5 text-white/40" />}
                         </button>
-                        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSendMessage()} placeholder="Mesaj yazın..." className="flex-1 bg-transparent px-4 text-sm outline-none" />
+                        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSendMessage()} placeholder="Mesaj yazın..." className="flex-1 bg-transparent px-4 text-sm outline-none text-white placeholder-white/40" />
                         <button onClick={handleSendMessage} className="bg-cyan-500 px-4 rounded-xl text-black font-bold text-xs">GÖNDER</button>
                       </div>
                    </div>
