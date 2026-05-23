@@ -22,6 +22,7 @@ class Config:
 
     # Fallback/calculated values
     ZOM_MAX_RETRIES = int(os.getenv("ZOM_MAX_RETRIES", "3"))
+    ZOM_ENABLE_VOICE_LISTENER = os.getenv("ZOM_ENABLE_VOICE_LISTENER", "false").lower() == "true"
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")

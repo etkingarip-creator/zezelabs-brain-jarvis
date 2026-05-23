@@ -31,20 +31,29 @@ class Orchestrator:
     def on_task_received(self, ch, method, properties, body):
         try:
             task_data = json.loads(body)
-            task_id = task_data.get("task_id", str(uuid.uuid4()))
             
-            # RETRY COUNTER LOGIC (GÖREV 3.1)
-            attempt = self.task_retries.get(task_id, 0) + 1
+            # Support both task_id and id
+            task_id = task_data.get("task_id") or task_data.get("id") or str(uuid.uuid4())
+            task_data["task_id"] = task_id
+            
+            # Support both description and task
+            description = task_data.get("description") or task_data.get("task") or ""
+            task_data["description"] = description
+            
+            # RETRY COUNTER LOGIC (GÖREV 3.1) - read from task payload or in-memory dictionary
+            attempt = task_data.get("attempt") or task_data.get("retry_count") or self.task_retries.get(task_id, 0)
+            attempt = int(attempt) + 1
             
             if attempt > config.ZOM_MAX_RETRIES:
                 self.logger.error(f"❌ Max retries ({config.ZOM_MAX_RETRIES}) exceeded for task {task_id}.")
-                self.mq.publish("failure_reports_queue", {**task_data, "error": "MAX_RETRY_EXCEEDED", "final_attempt": attempt})
+                self.mq.publish("failure_reports_queue", {**task_data, "status": "failed", "error": "MAX_RETRY_EXCEEDED", "final_attempt": attempt})
                 if task_id in self.task_retries: del self.task_retries[task_id]
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 return
 
             self.task_retries[task_id] = attempt
             task_data["attempt"] = attempt
+            task_data["retry_count"] = attempt
             
             # 3-Layer Security Shield
             import asyncio
@@ -97,7 +106,13 @@ class Orchestrator:
                 self.logger.info(f"✅ Task {task_id} routed to {target_queue} (Attempt {attempt})")
                 ch.basic_ack(delivery_tag=method.delivery_tag)
             else:
-                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+                if attempt > config.ZOM_MAX_RETRIES:
+                    self.logger.critical(f"❌ Publish failed multiple times. Shunting to DLQ.")
+                    self._shunt_to_dlq(task_data, "TARGET_PUBLISH_FAILED")
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                else:
+                    self.logger.warning(f"⚠️ Target queue publish failed. Re-queuing to main.")
+                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
         except Exception as e:
             self.logger.exception(f"❌ Orchestrator Error: {e}")

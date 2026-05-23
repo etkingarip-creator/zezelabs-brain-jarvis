@@ -38,10 +38,10 @@ CASES = [
     ("deploy yap production'a",                 "eng"),
     ("API refactor gerekiyor",                  "eng"),
     # Media
-    ("youtube videosu hazirla",                 "media"),
-    ("thumbnail tasarimi yap",                  "media"),
-    ("SEO raporu cikar",                        "media"),
-    ("script yaz video icin",                   "media"),
+    ("youtube videosu hazirla",                 "zeze_media"),
+    ("thumbnail tasarimi yap",                  "zeze_media"),
+    ("SEO raporu cikar",                        "zeze_media"),
+    ("script yaz video icin",                   "zeze_media"),
     # Academy
     ("egitim icerigi olustur",                  "academy"),
     ("pazar arastirmasi yap",                   "academy"),
@@ -51,15 +51,15 @@ CASES = [
     ("roadmap cikar Q3 icin",                   "mystic"),
     ("vizyon belirle",                          "mystic"),
     # Finance
-    ("BTC fiyatini takip et",                   "fin"),
-    ("butce raporu hazirla",                    "fin"),
-    ("binance pozisyon kontrol et",             "fin"),
+    ("BTC fiyatini takip et",                   "crypto"),
+    ("butce raporu hazirla",                    "crypto"),
+    ("binance pozisyon kontrol et",             "crypto"),
     # ARO: Sales, Marketing, Outreach
-    ("satis kampanyasi planla",                 "aro"),
-    ("musteri outreach yap",                    "aro"),
-    ("marketing plani olustur",                 "aro"),
-    ("lead listesi cikart",                     "aro"),
-    ("teklif hazirla yeni musteri icin",        "aro"),
+    ("satis kampanyasi planla",                 "zeze_aro"),
+    ("musteri outreach yap",                    "zeze_aro"),
+    ("marketing plani olustur",                 "zeze_aro"),
+    ("lead listesi cikart",                     "zeze_aro"),
+    ("teklif hazirla yeni musteri icin",        "zeze_aro"),
     # Telegram
     ("telegram'a bildirim gonder",              "telegram"),
     ("bot mesaj gonder",                        "telegram"),
