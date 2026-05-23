@@ -69,6 +69,18 @@ if os.getenv("AI_PROVIDER", "deepseek").lower() == "gemini":
 from backend.QueryEngine import QueryEngine
 from backend.tools import BashTool, FileEditTool, FileReadTool
 
+active_tts_process = None
+
+def kill_active_tts():
+    global active_tts_process
+    if active_tts_process:
+        try:
+            active_tts_process.kill()
+            active_tts_process = None
+            log.info("Barge-in: Active TTS process terminated by user voice activity.")
+        except Exception as e:
+            log.error(f"Error killing TTS process: {e}")
+
 SAMPLE_RATE   = 16000
 CHUNK_SIZE    = 512 
 
@@ -147,6 +159,7 @@ class Ear:
                     chunk = np.array(self._vad_buf[:CHUNK_SIZE], dtype=np.float32); self._vad_buf = self._vad_buf[CHUNK_SIZE:]
                     res = self._iter(chunk)
                     if res or (not self._on and peak > 0.03):
+                        kill_active_tts()
                         if not self._on:
                             self._on = True; self._buf = []
                             if self.loop: asyncio.run_coroutine_threadsafe(manager.broadcast({"type":"state","val":"listening"}), self.loop)
@@ -629,20 +642,30 @@ async def handle_engine(text):
 
 async def speak(text):
     if not text or not voice_state.enabled: return
+    asyncio.create_task(_speak_async(text))
+
+async def _speak_async(text):
+    global active_tts_process
     import edge_tts
     try:
+        kill_active_tts()
         clean_text = re.sub(r'[*_`#]', '', text)
         communicate = edge_tts.Communicate(clean_text, "tr-TR-AhmetNeural")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
-            await communicate.save(tmp.name)
-            # FFPLAY fix: Use simpler command for cross-platform or sounddevice
-            # Here we wait for it to finish to prevent ear race condition
-            proc = subprocess.Popen(["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp.name], 
-                                  creationflags=0x08000000 if sys.platform == "win32" else 0)
-            while proc.poll() is None: await asyncio.sleep(0.1)
-            try: os.unlink(tmp.name)
-            except: pass
-    except Exception as e: log.error(f"TTS Error: {e}")
+            tmp_name = tmp.name
+        await communicate.save(tmp_name)
+        active_tts_process = subprocess.Popen(
+            ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmp_name], 
+            creationflags=0x08000000 if sys.platform == "win32" else 0
+        )
+        while active_tts_process and active_tts_process.poll() is None:
+            await asyncio.sleep(0.1)
+        try:
+            os.unlink(tmp_name)
+        except:
+            pass
+    except Exception as e:
+        log.error(f"TTS Error: {e}")
 
 app = FastAPI(lifespan=lifespan)
 

@@ -69,6 +69,61 @@ class ClawdeOperatorKernel:
                               success=False, error=decision.reason,
                               started_at=started, finished_at=datetime.now(timezone.utc))
 
+        # Intercept safe builtins and run them platform-independently in native Python
+        import shlex
+        parts = shlex.split(command, posix=(os.name != "nt"))
+        if parts:
+            first_cmd = parts[0].lower()
+            cwd = request.cwd or WORKSPACE_ROOT
+            if first_cmd in {"ls", "dir"}:
+                try:
+                    files = os.listdir(cwd)
+                    stdout = "\n".join(files)
+                    finished = datetime.now(timezone.utc)
+                    self.telemetry.record_execution(
+                        task_id=request.task_id, department=self.department,
+                        tool_name="shell_exec", action=command[:80],
+                        status="success", risk_level=decision.risk_level.value,
+                        started_at=started, finished_at=finished,
+                    )
+                    return ToolResult(task_id=request.task_id, tool_name="shell_exec",
+                                      success=True, stdout=stdout, stderr="",
+                                      started_at=started, finished_at=finished)
+                except Exception as e:
+                    finished = datetime.now(timezone.utc)
+                    self.telemetry.record_execution(
+                        task_id=request.task_id, department=self.department,
+                        tool_name="shell_exec", action=command[:80],
+                        status="error", risk_level=decision.risk_level.value,
+                        started_at=started, finished_at=finished, error=str(e),
+                    )
+                    return ToolResult(task_id=request.task_id, tool_name="shell_exec",
+                                      success=False, error=str(e),
+                                      started_at=started, finished_at=finished)
+            elif first_cmd == "pwd":
+                finished = datetime.now(timezone.utc)
+                self.telemetry.record_execution(
+                    task_id=request.task_id, department=self.department,
+                    tool_name="shell_exec", action=command[:80],
+                    status="success", risk_level=decision.risk_level.value,
+                    started_at=started, finished_at=finished,
+                )
+                return ToolResult(task_id=request.task_id, tool_name="shell_exec",
+                                  success=True, stdout=cwd, stderr="",
+                                  started_at=started, finished_at=finished)
+            elif first_cmd == "echo":
+                stdout = " ".join(parts[1:])
+                finished = datetime.now(timezone.utc)
+                self.telemetry.record_execution(
+                    task_id=request.task_id, department=self.department,
+                    tool_name="shell_exec", action=command[:80],
+                    status="success", risk_level=decision.risk_level.value,
+                    started_at=started, finished_at=finished,
+                )
+                return ToolResult(task_id=request.task_id, tool_name="shell_exec",
+                                  success=True, stdout=stdout, stderr="",
+                                  started_at=started, finished_at=finished)
+
         cmd = self._normalize_shell_command(command)
         try:
             result = subprocess.run(

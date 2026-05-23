@@ -102,7 +102,7 @@ class ProviderSyncOrchestrator:
 
     async def plan_with_deepseek(self, prompt: str, metadata=None) -> dict:
         log.info("DeepSeek planning started.")
-        is_mock = os.getenv("ZOM_MOCK_DEEPSEEK", "true").lower() == "true"
+        is_mock = os.getenv("ZOM_MOCK_DEEPSEEK", "false").lower() == "true"
         model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
         
         # Parse intent for dry-run E2E (robust against encoding variations)
