@@ -12,7 +12,7 @@ class BackendLauncher:
     def __init__(self):
         self.process: Optional[subprocess.Popen] = None
         self.host = os.getenv("ZOM_DESKTOP_BACKEND_HOST", "127.0.0.1")
-        self.port = os.getenv("ZOM_DESKTOP_BACKEND_PORT", "8000")
+        self.port = os.getenv("ZOM_DESKTOP_BACKEND_PORT", "5000")
 
     def build_command(self) -> list[str]:
         # Safe default overrides

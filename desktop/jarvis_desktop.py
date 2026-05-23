@@ -259,6 +259,16 @@ class JarvisDesktopApp:
         self.animate_loop()
         self.update_telemetry_loop()
         
+        # Auto-start backend if it's offline (unified on port 5000)
+        def auto_start_worker():
+            import time
+            time.sleep(1.0)
+            status = self.launcher.health_check()
+            if status["status"] != "online":
+                self.launcher.start_backend()
+                self.check_status()
+        threading.Thread(target=auto_start_worker, daemon=True).start()
+        
         self.hovered_node = None
         self.voice_streamer = VoiceStreamer(self)
         self.voice_streamer.speak_welcoming()
@@ -369,7 +379,7 @@ class JarvisDesktopApp:
                 elif index == 1:
                     return lambda e: self.open_matrix()
                 elif index == 2:
-                    return lambda e: self.toggle_mic()
+                    return lambda e: self.toggle_chat_drawer()
                 elif index == 3:
                     return lambda e: self.open_docs()
                 elif index == 6:
@@ -1408,6 +1418,11 @@ class JarvisDesktopApp:
     def toggle_mic(self):
         if hasattr(self, "mic_toggle"):
             self.mic_toggle.toggle()
+
+    def toggle_chat_drawer(self):
+        self.toggle_drawer()
+        if self.drawer_expanded:
+            self.input_entry.focus_set()
 
     def on_mic_toggle(self, state):
         self.voice_active = state
