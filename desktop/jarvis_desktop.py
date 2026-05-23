@@ -6,10 +6,9 @@ import json
 import webbrowser
 import threading
 import asyncio
-from datetime import datetime, timezone
 import httpx
 
-from PySide6.QtCore import Qt, QPoint, QTimer, QSize, QUrl
+from PySide6.QtCore import Qt, QPoint, QTimer, QSize, QUrl, Signal, QObject
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath, QLinearGradient, QIcon
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -19,11 +18,11 @@ from PySide6.QtWidgets import (
 
 # Core theme variables
 THEME = {
-    "background": "rgba(7, 13, 25, 0.95)",
-    "surface": "rgba(13, 21, 39, 0.85)",
-    "border": "#1c2842",
-    "primary": "#38bdf8",  # Neon Turquoise/Cyan
-    "accent": "#ec4899",   # Neon Pink/Magenta
+    "background": "rgba(7, 11, 22, 0.98)",
+    "surface": "rgba(13, 22, 42, 0.88)",
+    "border": "#1e2e4f",
+    "primary": "#00f2fe",  # Premium Neon Cyan
+    "accent": "#ff007f",   # Premium Neon Pink
     "success": "#10b981",  # Emerald Green
     "warning": "#f59e0b",
     "error": "#ef4444",
@@ -31,45 +30,54 @@ THEME = {
     "text_muted": "#64748b"
 }
 
+# Signal broker to communicate background websocket events with QMainWindow securely
+class WebSocketSignals(QObject):
+    message_received = Signal(str, str) # sender, text
+    stats_received = Signal(float, float, str) # cpu, memory, uptime
+    state_changed = Signal(str) # idle, thinking, listening
+
 class ToolTip(QLabel):
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
         self.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
         self.setStyleSheet(f"""
-            background-color: #0d1527;
-            color: #38bdf8;
-            border: 1px solid #1c2842;
-            border-radius: 4px;
+            background-color: #070b16;
+            color: {THEME["primary"]};
+            border: 1px solid {THEME["border"]};
+            border-radius: 6px;
             font-family: 'Segoe UI';
             font-size: 11px;
             font-weight: bold;
-            padding: 6px 10px;
+            padding: 6px 12px;
         """)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
 class PremiumButton(QPushButton):
-    def __init__(self, text, parent=None, is_primary=False):
+    def __init__(self, text, parent=None, is_primary=False, color_override=None):
         super().__init__(text, parent)
         self.is_primary = is_primary
+        self.color_override = color_override
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         self.setFixedHeight(36)
         self.setup_style()
         
     def setup_style(self):
+        primary_color = self.color_override if self.color_override else THEME["primary"]
+        accent_color = THEME["accent"]
+        
         if self.is_primary:
             self.setStyleSheet(f"""
                 QPushButton {{
-                    background-color: {THEME["primary"]};
-                    color: #070d19;
-                    border: 1px solid {THEME["primary"]};
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {primary_color}, stop:1 {accent_color});
+                    color: #070b16;
+                    border: none;
                     border-radius: 8px;
                     padding: 0 16px;
                 }}
                 QPushButton:hover {{
-                    background-color: {THEME["accent"]};
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {accent_color}, stop:1 #7928ca);
                     color: #ffffff;
-                    border-color: {THEME["accent"]};
                 }}
             """)
         else:
@@ -82,9 +90,9 @@ class PremiumButton(QPushButton):
                     padding: 0 16px;
                 }}
                 QPushButton:hover {{
-                    background-color: {THEME["primary"]};
-                    color: #070d19;
-                    border-color: {THEME["primary"]};
+                    background-color: {primary_color};
+                    color: #070b16;
+                    border-color: {primary_color};
                 }}
             """)
 
@@ -113,7 +121,6 @@ class NeuralNetWidget(QWidget):
         start_x = 40
         
         for l_idx, count in enumerate(layers):
-            layer_nodes = []
             spacing_y = 190 / (count + 1)
             x = start_x + l_idx * spacing_x
             
@@ -215,7 +222,7 @@ class NeuralNetWidget(QWidget):
             
             # Inner circle fill
             painter.setPen(QPen(QColor(THEME["primary"]), 2))
-            painter.setBrush(QBrush(QColor("#070d19")))
+            painter.setBrush(QBrush(QColor("#070b16")))
             painter.drawEllipse(QPoint(int(node["x"]), int(node["y"])), int(r), int(r))
             
         # Draw Hover Glow circles
@@ -248,7 +255,6 @@ class VoiceWaveWidget(QWidget):
         super().__init__(parent)
         self.wave_phase = 0.0
         self.active = False
-        self.last_amplitude = 0.0
         
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_wave)
@@ -306,6 +312,7 @@ class FinancialChartWidget(QWidget):
         super().__init__(parent)
         self.step = 0
         self.mouse_pos = QPoint(-100, -100)
+        self.seed_points = [0.15, 0.35, 0.20, 0.45, 0.30, 0.60, 0.50, 0.75, 0.65, 0.85]
         self.setMouseTracking(True)
         
         self.timer = QTimer(self)
@@ -314,6 +321,10 @@ class FinancialChartWidget(QWidget):
         
     def update_chart(self):
         self.step += 1
+        self.update()
+        
+    def randomize_data(self):
+        self.seed_points = [random.uniform(0.1, 0.9) for _ in range(10)]
         self.update()
         
     def mouseMoveEvent(self, event):
@@ -333,11 +344,9 @@ class FinancialChartWidget(QWidget):
         gw = width - pad_x * 2
         gh = height - pad_y * 2
         
-        seed_points = [0.15, 0.35, 0.20, 0.45, 0.30, 0.60, 0.50, 0.75, 0.65, 0.85]
-        
         coords = []
-        for i, val in enumerate(seed_points):
-            x = pad_x + (i / (len(seed_points) - 1)) * gw
+        for i, val in enumerate(self.seed_points):
+            x = pad_x + (i / (len(self.seed_points) - 1)) * gw
             wiggle = math.sin(self.step * 0.15 + i) * 0.03
             y = height - pad_y - (val + wiggle) * gh
             coords.append(QPoint(int(x), int(y)))
@@ -390,19 +399,18 @@ class FinancialChartWidget(QWidget):
                 
                 # Glowing node highlighter
                 painter.setPen(QPen(QColor(THEME["success"]), 2))
-                painter.setBrush(QBrush(QColor("#0d1527")))
+                painter.setBrush(QBrush(QColor("#070b16")))
                 painter.drawEllipse(QPoint(px, py), 5, 5)
                 
                 # Info overlay
-                val = seed_points[nearest_idx]
-                info_txt = f"Zaman: T-{9-nearest_idx}\nROI: %{val*100:.1f}"
+                val = self.seed_points[nearest_idx]
                 bx = px + 10
                 by = py - 40
                 if bx + 95 > width: bx = px - 105
                 if by < 2: by = py + 10
                 
                 painter.setPen(QPen(QColor(THEME["success"]), 1))
-                painter.setBrush(QBrush(QColor("#0d1527")))
+                painter.setBrush(QBrush(QColor("#070b16")))
                 painter.drawRect(bx, by, 95, 36)
                 painter.setPen(QColor(THEME["text"]))
                 painter.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
@@ -445,7 +453,6 @@ class ChatBubbleItem(QWidget):
             """)
             bubble_row.addStretch()
             bubble_row.addWidget(self.bubble_lbl)
-            # Give bubble max width constraints
             self.bubble_lbl.setMaximumWidth(450)
         elif self.sender == "jarvis":
             header_lbl.setText("⚡ JARVIS")
@@ -471,7 +478,7 @@ class ChatBubbleItem(QWidget):
             header_row.addStretch()
             
             self.bubble_lbl.setStyleSheet(f"""
-                background-color: #070d19;
+                background-color: #070b16;
                 color: {THEME['warning']};
                 border: 1px solid {THEME['border']};
                 border-radius: 8px;
@@ -483,80 +490,26 @@ class ChatBubbleItem(QWidget):
         layout.addLayout(header_row)
         layout.addLayout(bubble_row)
 
-class PremiumCard(QFrame):
-    def __init__(self, title, desc, parent=None, command=None):
-        super().__init__(parent)
-        self.title = title
-        self.desc = desc
-        self.command = command
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setup_ui()
-        
-    def setup_ui(self):
-        self.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Plain)
-        self.setLineWidth(1)
-        
-        self.setStyleSheet(f"""
-            QFrame {{
-                background-color: {THEME["surface"]};
-                border: 1px solid {THEME["border"]};
-                border-radius: 10px;
-            }}
-        """)
-        
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        
-        self.title_lbl = QLabel(self.title, self)
-        self.title_lbl.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-        self.title_lbl.setStyleSheet(f"color: {THEME['text']}; border: none; background: transparent;")
-        layout.addWidget(self.title_lbl)
-        
-        self.desc_lbl = QLabel(self.desc, self)
-        self.desc_lbl.setWordWrap(True)
-        self.desc_lbl.setFont(QFont("Segoe UI", 8))
-        self.desc_lbl.setStyleSheet(f"color: {THEME['text_muted']}; border: none; background: transparent;")
-        layout.addWidget(self.desc_lbl)
-        
-    def enterEvent(self, event):
-        # Premium Neon accent color transition on hover
-        self.setStyleSheet(f"""
-            QFrame {{
-                background-color: #1c0d24;
-                border: 1px solid {THEME["accent"]};
-                border-radius: 10px;
-            }}
-        """)
-        self.title_lbl.setStyleSheet(f"color: {THEME['accent']}; border: none; background: transparent;")
-        
-    def leaveEvent(self, event):
-        self.setStyleSheet(f"""
-            QFrame {{
-                background-color: {THEME["surface"]};
-                border: 1px solid {THEME["border"]};
-                border-radius: 10px;
-            }}
-        """)
-        self.title_lbl.setStyleSheet(f"color: {THEME['text']}; border: none; background: transparent;")
-        
-    def mousePressEvent(self, event):
-        if self.command:
-            self.command()
-
 class JarvisPySideMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.theme = THEME
         self.drag_start = QPoint()
+        self.ws_signals = WebSocketSignals()
         
-        self.setWindowTitle("⚡ ZEZELABS HOLDING | JARVIS | v3.0-QtPrototype")
+        # Audio / Mic status state
+        self.mic_active = True
+        self.voice_active = True
+        
+        self.setWindowTitle("⚡ ZEZELABS HOLDING | JARVIS | v3.0-QtClient")
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.resize(1150, 760)
         self.setStyleSheet(f"background-color: {self.theme['background']};")
         
         self.setup_ui()
         self.setup_system_tray()
-
+        self.setup_websocket_connection()
+        
     def setup_system_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -604,7 +557,7 @@ class JarvisPySideMainWindow(QMainWindow):
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(20, 0, 20, 0)
         
-        title_lbl = QLabel("⚡ ZEZELABS HOLDING  |  JARVIS  |  v3.0-QtPrototype (PySide6)", title_bar)
+        title_lbl = QLabel("⚡ ZEZELABS HOLDING  |  JARVIS  |  v3.0-PremiumClient (PySide6)", title_bar)
         title_lbl.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         title_lbl.setStyleSheet(f"color: {self.theme['primary']}; border: none;")
         title_layout.addWidget(title_lbl)
@@ -639,7 +592,7 @@ class JarvisPySideMainWindow(QMainWindow):
         shell_splitter.setHandleWidth(1)
         shell_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {self.theme['border']}; }}")
         
-        # Left strip menu
+        # Left strip menu (SIDEBAR BUTTONS WORKING)
         left_strip = QFrame(shell_splitter)
         left_strip.setFixedWidth(60)
         left_strip.setStyleSheet(f"background-color: {self.theme['surface']};")
@@ -647,9 +600,23 @@ class JarvisPySideMainWindow(QMainWindow):
         left_layout.setContentsMargins(0, 15, 0, 15)
         left_layout.setSpacing(15)
         
-        icons = ["🏠", "💬", "📈", "📁", "⚙️"]
-        for ico in icons:
-            btn = QPushButton(ico, left_strip)
+        # Working Sidebar Button assignments
+        self.btn_home = QPushButton("🏠", left_strip)
+        self.btn_home.clicked.connect(lambda: self.add_message("system", "Sistem durumları anlık olarak güncellendi."))
+        
+        self.btn_chat = QPushButton("💬", left_strip)
+        self.btn_chat.clicked.connect(self.clear_chat)
+        
+        self.btn_chart = QPushButton("📈", left_strip)
+        self.btn_chart.clicked.connect(lambda: [self.roi_chart.randomize_data(), self.add_message("system", "ROI grafiği ve istatistikleri başarıyla güncellendi.")])
+        
+        self.btn_folder = QPushButton("📁", left_strip)
+        self.btn_folder.clicked.connect(self.open_workspace)
+        
+        self.btn_settings = QPushButton("⚙️", left_strip)
+        self.btn_settings.clicked.connect(lambda: self.add_message("system", f"Ayarlar: Mik: {'AÇIK' if self.mic_active else 'KAPALI'} | Ses: {'AÇIK' if self.voice_active else 'KAPALI'}"))
+        
+        for btn in [self.btn_home, self.btn_chat, self.btn_chart, self.btn_folder, self.btn_settings]:
             btn.setFixedSize(60, 50)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet(f"""
@@ -665,6 +632,7 @@ class JarvisPySideMainWindow(QMainWindow):
                 }}
             """)
             left_layout.addWidget(btn)
+            
         left_layout.addStretch()
         shell_splitter.addWidget(left_strip)
         
@@ -733,10 +701,10 @@ class JarvisPySideMainWindow(QMainWindow):
         chat_hdr_layout.addWidget(chat_hdr)
         chat_hdr_layout.addStretch()
         
-        status_badge = QLabel("BAĞLANTI: AKTİF", chat_frame)
-        status_badge.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        status_badge.setStyleSheet(f"color: {self.theme['success']}; border: none; background: transparent;")
-        chat_hdr_layout.addWidget(status_badge)
+        self.status_badge = QLabel("BAĞLANTI: AKTİF", chat_frame)
+        self.status_badge.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self.status_badge.setStyleSheet(f"color: {self.theme['success']}; border: none; background: transparent;")
+        chat_hdr_layout.addWidget(self.status_badge)
         chat_layout.addLayout(chat_hdr_layout)
         
         # Scrollable Chat Area
@@ -754,6 +722,53 @@ class JarvisPySideMainWindow(QMainWindow):
         self.chat_scroll.setWidget(self.chat_container)
         chat_layout.addWidget(self.chat_scroll)
         
+        # Interactive Audio/Voice Controls bar directly under chat area
+        control_bar_layout = QHBoxLayout()
+        control_bar_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Speaker Toggle Button (🔊 / 🔇)
+        self.btn_spk_toggle = QPushButton("🔊 SES: AÇIK", chat_frame)
+        self.btn_spk_toggle.setFixedSize(110, 32)
+        self.btn_spk_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_spk_toggle.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self.btn_spk_toggle.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #070b16;
+                color: {self.theme['primary']};
+                border: 1px solid {self.theme['primary']};
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme['primary']};
+                color: #070b16;
+            }}
+        """)
+        self.btn_spk_toggle.clicked.connect(self.toggle_speaker)
+        control_bar_layout.addWidget(self.btn_spk_toggle)
+        
+        # Microphone Toggle Button (🎙️ / 🔇)
+        self.btn_mic_toggle = QPushButton("🎙️ MİK: AÇIK", chat_frame)
+        self.btn_mic_toggle.setFixedSize(110, 32)
+        self.btn_mic_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_mic_toggle.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self.btn_mic_toggle.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #070b16;
+                color: {self.theme['accent']};
+                border: 1px solid {self.theme['accent']};
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme['accent']};
+                color: #070b16;
+            }}
+        """)
+        self.btn_mic_toggle.clicked.connect(self.toggle_microphone)
+        control_bar_layout.addWidget(self.btn_mic_toggle)
+        control_bar_layout.addStretch()
+        
+        chat_layout.addLayout(control_bar_layout)
+        
         # Input row
         input_row = QHBoxLayout()
         self.input_entry = QLineEdit(chat_frame)
@@ -761,7 +776,7 @@ class JarvisPySideMainWindow(QMainWindow):
         self.input_entry.setFont(QFont("Segoe UI", 10))
         self.input_entry.setStyleSheet(f"""
             QLineEdit {{
-                background-color: #070d19;
+                background-color: #070b16;
                 color: #ffffff;
                 border: 1px solid {self.theme['border']};
                 border-radius: 8px;
@@ -805,6 +820,83 @@ class JarvisPySideMainWindow(QMainWindow):
         # Default greetings
         self.add_message("jarvis", "Merhaba komutanım! PySide6 tabanlı yeni fütüristik Jarvis v3.0 arayüzüne hoş geldiniz. Antialiasing (kenar yumuşatma) ve pürüzsüz animasyonlar başarıyla devrededir.")
 
+    # Sidebar functional actions
+    def clear_chat(self):
+        # Clear chat layout completely
+        for i in reversed(range(self.chat_list_layout.count())): 
+            item = self.chat_list_layout.itemAt(i)
+            if item and item.widget():
+                item.widget().deleteLater()
+        self.chat_list_layout.addStretch()
+        self.add_message("jarvis", "Sohbet geçmişi temizlendi. Yeni bir talimat verebilirsiniz, komutanım!")
+        
+    def open_workspace(self):
+        workspace_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "workspace"))
+        if os.path.exists(workspace_dir):
+            os.startfile(workspace_dir)
+            self.add_message("system", "Workspace dizini sistem gezgininde açıldı.")
+        else:
+            self.add_message("system", "Workspace dizini bulunamadı.")
+
+    # Audio/Mic toggle handlers
+    def toggle_speaker(self):
+        self.voice_active = not self.voice_active
+        if self.voice_active:
+            self.btn_spk_toggle.setText("🔊 SES: AÇIK")
+            self.btn_spk_toggle.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: #070b16;
+                    color: {self.theme['primary']};
+                    border: 1px solid {self.theme['primary']};
+                    border-radius: 6px;
+                }}
+            """)
+            self.add_message("system", "Asistan sesli yanıt motoru (TTS) etkinleştirildi.")
+        else:
+            self.btn_spk_toggle.setText("🔇 SES: KAPALI")
+            self.btn_spk_toggle.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: #070b16;
+                    color: {self.theme['text_muted']};
+                    border: 1px solid {self.theme['border']};
+                    border-radius: 6px;
+                }}
+            """)
+            self.add_message("system", "Asistan sesli yanıt motoru (TTS) susturuldu.")
+            
+        # Send voice toggle state to websocket if connected
+        if hasattr(self, 'ws') and self.ws:
+            self.send_ws_json({"type": "voice_toggle", "val": self.voice_active})
+
+    def toggle_microphone(self):
+        self.mic_active = not self.mic_active
+        if self.mic_active:
+            self.btn_mic_toggle.setText("🎙️ MİK: AÇIK")
+            self.btn_mic_toggle.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: #070b16;
+                    color: {self.theme['accent']};
+                    border: 1px solid {self.theme['accent']};
+                    border-radius: 6px;
+                }}
+            """)
+            self.add_message("system", "Mikrofon ses dinleme motoru aktif.")
+        else:
+            self.btn_mic_toggle.setText("🔇 MİK: KAPALI")
+            self.btn_mic_toggle.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: #070b16;
+                    color: {self.theme['text_muted']};
+                    border: 1px solid {self.theme['border']};
+                    border-radius: 6px;
+                }}
+            """)
+            self.add_message("system", "Mikrofon ses dinleme motoru kapatıldı.")
+            
+        # Send mic toggle state to websocket if connected
+        if hasattr(self, 'ws') and self.ws:
+            self.send_ws_json({"type": "mic_toggle", "val": self.mic_active})
+
     def title_press_event(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_start = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
@@ -817,7 +909,6 @@ class JarvisPySideMainWindow(QMainWindow):
 
     def add_message(self, sender, text):
         bubble = ChatBubbleItem(sender, text, self)
-        # Add to layout before stretch
         count = self.chat_list_layout.count()
         self.chat_list_layout.insertWidget(count - 1, bubble)
         
@@ -825,6 +916,66 @@ class JarvisPySideMainWindow(QMainWindow):
         QTimer.singleShot(50, lambda: self.chat_scroll.verticalScrollBar().setValue(
             self.chat_scroll.verticalScrollBar().maximum()
         ))
+
+    # WebSocket integration
+    def setup_websocket_connection(self):
+        # Connect signals
+        self.ws_signals.message_received.connect(self.add_message)
+        self.ws_signals.state_changed.connect(self.handle_state_change)
+        
+        # Start background websocket connection thread
+        def ws_thread_loop():
+            async def run_ws():
+                import websockets
+                uri = "ws://localhost:8000/ws" # Synchronized port 8000
+                while True:
+                    try:
+                        async with websockets.connect(uri) as websocket:
+                            self.ws = websocket
+                            # Send initial toggle states
+                            await websocket.send(json.dumps({"type": "voice_toggle", "val": self.voice_active}))
+                            await websocket.send(json.dumps({"type": "mic_toggle", "val": self.mic_active}))
+                            
+                            self.status_badge.setText("BAĞLANTI: AKTİF")
+                            self.status_badge.setStyleSheet(f"color: {self.theme['success']}; border: none; background: transparent;")
+                            
+                            while True:
+                                raw_data = await websocket.recv()
+                                data = json.loads(raw_data)
+                                
+                                if data.get("type") == "response":
+                                    self.ws_signals.message_received.emit("jarvis", data.get("val", ""))
+                                elif data.get("type") == "state":
+                                    self.ws_signals.state_changed.emit(data.get("val", "idle"))
+                    except Exception as e:
+                        self.ws = None
+                        self.status_badge.setText("BAĞLANTI: KAPALI")
+                        self.status_badge.setStyleSheet(f"color: {self.theme['error']}; border: none; background: transparent;")
+                        await asyncio.sleep(3) # Retry connection every 3 seconds
+                        
+            # Execute asyncio loop inside thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(run_ws())
+            
+        threading.Thread(target=ws_thread_loop, daemon=True).start()
+
+    def send_ws_json(self, payload):
+        # Helper to push async data to WebSocket
+        if hasattr(self, 'ws') and self.ws:
+            def _send():
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(self.ws.send(json.dumps(payload)))
+                except: pass
+            threading.Thread(target=_send, daemon=True).start()
+
+    def handle_state_change(self, state):
+        if state == "thinking":
+            self.wave_canvas.active = True
+        else:
+            self.wave_canvas.active = False
 
     def send_message(self):
         text = self.input_entry.text().strip()
@@ -837,10 +988,11 @@ class JarvisPySideMainWindow(QMainWindow):
         # Start thinking animation
         self.wave_canvas.active = True
         
-        # Background worker for simulated query
+        # Background worker for simulated query or direct HTTP REST route to synchronized Port 8000
         def run_query():
             try:
-                resp = httpx.post("http://localhost:5000/api/jarvis/chat", json={"message": text}, timeout=10)
+                # Synchronized backend endpoint port 8000
+                resp = httpx.post("http://localhost:8000/api/jarvis/chat", json={"message": text}, timeout=12)
                 reply = resp.json().get("response", "Başarılı bağlantı kuruldu.")
             except Exception as e:
                 reply = f"Masaüstü ağ geçidi bağlantı hatası: {e}. Yerel motor simüle ediliyor."
