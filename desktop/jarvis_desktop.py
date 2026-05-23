@@ -1,7 +1,7 @@
 """
-ZEZELABS JARVIS v9.0 — QUANTUM COMMAND CENTER (ULTRA-PREMIUM HUD VERSION)
-SpaceX Flight Dashboard + NASA Mission Control + Bloomberg Cyber Terminal
-Holographic Wireframe Grid Spire · 3D Particle Storm · Compact Chat Bubbles · Rotating circular telemetry
+ZEZELABS JARVIS v10.0 — QUANTUM COMMAND CENTER (1-3 HYBRID BLUEPRINT MASTERPIECE)
+SpaceX / NASA Mission Control Style · Tactical Blueprint Floorplan · Neural Node Network
+Translucent Office Rooms · Scrollable Sidebar · High-Readability Chat Balons · 60 FPS Cyber Particles
 """
 import sys
 import os
@@ -26,40 +26,47 @@ from PySide6.QtWidgets import (
     QProgressBar, QSplitter
 )
 
-# ── Design Tokens (Cyber Translucent Matrix Theme) ──────────────────
+# ── Design Tokens (Tactical Cockpit Colors) ──────────────────────────
 C = {
-    "bg_deep":      "#020408",   # Ultra deep space black
-    "bg_dark":      "#040812",   # Rich translucent cobalt black
-    "bg_panel":     "#070d1ecc",  # 80% Translucent Glassmorphic Space
-    "bg_input":     "#0a1226ee",  # Input field deep glass
-    "border":       "#13213dff",  # Structural tech border
-    "border_glow":  "#1f3661ff",  # Focus tech glow border
-    "text_white":   "#f1f5f9",   # Soft white
-    "text_gray":    "#64748b",   # Telemetry cool gray
-    "text_dark":    "#2e3b55",   # Muted grid lines
+    "bg_deep":      "#020407",   # Deep obsidian dark space
+    "bg_dark":      "#040813",   # Rich translucent slate
+    "bg_panel":     "#070d1ed8",  # 85% Translucent Glassmorphic Space
+    "bg_input":     "#0a1226ee",  # Input field dark glass
+    "border":       "#13223fff",  # Tech boundary
+    "border_glow":  "#1f3661ff",  # Highlight neon boundary
+    "text_white":   "#f1f5f9",   # High-contrast white
+    "text_gray":    "#64748b",   # Space gray telemetry
+    "text_dark":    "#24314c",   # Muted blueprint grid lines
     
     "neon_teal":    "#00f2fe",   # Hologram Core Cyan
-    "neon_pink":    "#ff007f",   # Alert / Pulse Pink
-    "neon_purple":  "#a855f7",   # Strategy / Matrix Violet
-    "neon_gold":    "#ffd700",   # CEO Penthouse Amber Gold
-    "neon_green":   "#10b981",   # Security System Safe Green
-    "neon_red":     "#ef4444",   # Cyber Warning Red
+    "neon_pink":    "#ff007f",   # Alert Pink
+    "neon_purple":  "#a855f7",   # Strategy / Matrix Purple
+    "neon_gold":    "#ffd700",   # CEO Gold
+    "neon_green":   "#10b981",   # System OK Green
+    "neon_red":     "#ef4444",   # Critical Red
 }
 
-FLOORS = [
-    {"id": "ceo",       "name": "CEO Penthouse",   "icon": "👑", "color": C["neon_gold"],   "health": 98, "agents": 1, "floor": 6, "desc": "Stratejik Vizyon & AI Onay Hattı"},
-    {"id": "strategy",  "name": "Strateji Ağı",    "icon": "🎯", "color": C["neon_purple"], "health": 92, "agents": 3, "floor": 5, "desc": "Holografik Pazar & Karar Motorları"},
-    {"id": "eng",       "name": "Mühendislik",     "icon": "⚙️", "color": C["neon_teal"],   "health": 95, "agents": 5, "floor": 4, "desc": "Sistem Geliştirme & AI Kodlama"},
-    {"id": "fin",       "name": "Finans Terminali", "icon": "💰", "color": C["neon_green"],  "health": 88, "agents": 3, "floor": 3, "desc": "Otonom Arbitraj & Risk Analizi"},
-    {"id": "marketing", "name": "Pazarlama Hub'ı",  "icon": "📡", "color": C["neon_pink"],   "health": 85, "agents": 4, "floor": 2, "desc": "Duygu Analizi & İçerik Dağıtımı"},
-    {"id": "sales",     "name": "Satış Kanalları", "icon": "🚀", "color": "#f97316",         "health": 91, "agents": 3, "floor": 1, "desc": "Otonom Anlaşmalar & Pipeline"},
-    {"id": "ops",       "name": "Operasyon",       "icon": "🔧", "color": "#06b6d4",         "health": 89, "agents": 2, "floor": 0, "desc": "Altyapı İzleme & Kaynak Tahsisi"},
-]
+# ── 1-3 Hybrid Blueprint Zone Definitions ───────────────────────────
+ZONES = {
+    "ceo":       {"name": "CEO Penthouse Suite",   "x": 500, "y": 100, "w": 200, "h": 90,  "color": C["neon_gold"],   "icon": "👑", "desc": "Holding Stratejik Karar Çekirdeği"},
+    "strategy":  {"name": "Strateji Savaş Odası",  "x": 500, "y": 290, "w": 230, "h": 115, "color": C["neon_purple"], "icon": "🎯", "desc": "Holografik Pazar & Karar Simülasyonu"},
+    "eng":       {"name": "Mühendislik Server",   "x": 190, "y": 190, "w": 200, "h": 95,  "color": C["neon_teal"],   "icon": "⚙️", "desc": "AI Kod Üretim Sunucuları"},
+    "fin":       {"name": "Finans Terminal Odası", "x": 810, "y": 190, "w": 200, "h": 95,  "color": C["neon_green"],  "icon": "💰", "desc": "Arbitraj & Portföy Yönetim Masası"},
+    "marketing": {"name": "Medya & Pazarlama Hub'ı","x": 190, "y": 390, "w": 200, "h": 95,  "color": C["neon_pink"],   "icon": "📡", "desc": "Sosyal Akış & Kampanya Tasarım Hub'ı"},
+    "sales":     {"name": "Satış & İş Geliştirme", "x": 810, "y": 390, "w": 200, "h": 95,  "color": "#f97316",         "icon": "🚀", "desc": "Müşteri Pipeline & Anlaşma Boruları"},
+    "ops":       {"name": "Operasyon Altyapı",     "x": 500, "y": 480, "w": 200, "h": 90,  "color": "#06b6d4",         "icon": "🔧", "desc": "Sistem İzleme & Kaynak Yönetim Odası"},
+}
 
-TASKS = [
-    "Q3 Holding Analizi", "Siber Güvenlik Taraması", "Pazar Trend Tahmini",
-    "Kod Optimizasyonu v4.0", "Arbitraj Risk Değerlendirmesi", "Sosyal Medya Kampanyası",
-    "Pipeline Entegrasyonu", "Otonom Rapor Hazırlama", "Chroma DB İndeksleme",
+# ── Dynamic Neural Network Circuit Links ─────────────────────────────
+CIRCUITS = [
+    ("ceo", "strategy"),
+    ("eng", "strategy"),
+    ("fin", "strategy"),
+    ("marketing", "strategy"),
+    ("sales", "strategy"),
+    ("ops", "strategy"),
+    ("eng", "ceo"),
+    ("fin", "ceo"),
 ]
 
 def get_health_color(h):
@@ -87,36 +94,29 @@ class ChatWorker(QThread):
             else:
                 self.response_ready.emit(f"Sunucu hatası: Kod {r.status_code}", False)
         except Exception as e:
-            time.sleep(1.0)
+            time.sleep(1.2)
             fallback_replies = [
-                "📡 YEREL MOD: Merkez sunucuyla bağlantı kesildi. Yerel Ajan Protokolü devrede.\nYapılan analiz: Veri tabanı stabil, eklenti sistemi aktif.",
-                "⚠️ GÜVENLİ BAĞLANTI: FastAPI sunucusuna erişilemiyor. Yerel sinirsel örgü stabil.\nYerel sistem verisi: CPU stabil, bellek optimize.",
-                "🤖 JARVIS YEREL ÇEKİRDEK: Ağ bağlantısı yok. Yerel komutlar işletiliyor.\nTalimatınız kuyruğa alındı ve sunucu aktifleştiğinde otomatik senkronize edilecektir.",
+                "📡 YEREL KONTROL MODU: Karargah FastAPI sunucusuyla iletişim kesildi.\nYerel siber eklenti ve ARO Ajan denetimleri stabil durumda.",
+                "⚠️ GÜVENLİ ERİŞİM MODU: Çevrimdışı mod aktif. Ajan yörüngeleri ve neural blueprint stabil.\nYerel veri: CPU stabil, log akışı optimize.",
+                "🤖 JARVIS YEREL BELLEK: Ağ bağlantısı yok. Talimatınız karargah asenkron sırasına kaydedildi.",
             ]
             self.response_ready.emit(random.choice(fallback_replies), False)
 
 
-# ── Particle Class for Cyber Atmosphere ──────────────────────────────
-class CyberParticle:
-    def __init__(self, W, H):
-        self.reset(W, H, True)
+# ── Data Packet Flowing Along Neural Circuits ────────────────────────
+class DataPacket:
+    def __init__(self, start_zone, end_zone, col):
+        self.start = start_zone
+        self.end = end_zone
+        self.color = col
+        self.progress = random.random()
+        self.speed = random.uniform(0.008, 0.02)
+        self.size = random.uniform(2.5, 4.0)
 
-    def reset(self, W, H, init=False):
-        self.gx = random.uniform(0.3, 2.7)
-        self.gy = random.uniform(0.3, 2.7)
-        self.gz = random.uniform(0, 7.0) if init else 0.0
-        self.speed = random.uniform(0.005, 0.012)
-        self.size = random.uniform(1.8, 3.5)
-        self.color = random.choice([C["neon_teal"], C["neon_purple"], C["neon_gold"], C["neon_pink"]])
-        self.alpha = random.randint(30, 110)
-        self.pulse_speed = random.uniform(0.08, 0.2)
-        self.pulse_phase = random.uniform(0, 3.14)
-
-    def tick(self, W, H):
-        self.gz += self.speed
-        self.pulse_phase += self.pulse_speed
-        if self.gz > 7.1:
-            self.reset(W, H, False)
+    def tick(self):
+        self.progress += self.speed
+        if self.progress >= 1.0:
+            self.progress = 0.0
 
 
 # ── Quantum Neural Agent ─────────────────────────────────────────────
@@ -129,520 +129,334 @@ class QuantumAgent:
         self.progress = random.uniform(15, 85)
         self.status = random.choice(["AKTİF", "AKTİF", "AKTİF", "KİLİTLİ"])
         
-        # Predefined distinct orbits to avoid messy clumping!
-        self.orbit_r = random.uniform(0.25, 0.42)
-        self.phase = random.uniform(0, math.tau)
-        self.speed = random.uniform(0.01, 0.024)
-        self.pulse = random.uniform(0, math.tau)
+        # 2D Random movement variables bounded inside their office rooms
+        self.px = 0.0
+        self.py = 0.0
+        self.angle = random.uniform(0, math.tau)
+        self.speed = random.uniform(0.3, 0.9)
         self.trail = []
 
-    def tick(self):
-        self.phase += self.speed
-        self.pulse += 0.08
-        if self.status == "AKTİF":
-            self.progress += random.uniform(0, 0.3)
-            if self.progress >= 100:
-                self.progress = 0
-                self.task = random.choice(TASKS)
+    def tick(self, w, h):
+        # Bounded random walk inside office blueprint rectangle
+        self.angle += random.uniform(-0.3, 0.3)
+        self.px += self.speed * math.cos(self.angle)
+        self.py += self.speed * math.sin(self.angle)
+
+        # Constrain inside boundaries
+        pad_x = w * 0.4
+        pad_y = h * 0.4
+        if self.px < -pad_x: self.px = -pad_x; self.angle += math.pi
+        if self.px > pad_x: self.px = pad_x; self.angle += math.pi
+        if self.py < -pad_y: self.py = -pad_y; self.angle += math.pi
+        if self.py > pad_y: self.py = pad_y; self.angle += math.pi
 
 
-# ── ISOMETRIC HOLOGRAPHIC SPIRE (SpaceX cockpit standards) ───────────
-class IsometricSpire(QWidget):
-    floor_selected = Signal(dict)
+# ── TACTICAL BLUEPRINT FLOORPLAN & NEURAL NODE GRID (1-3 Hybrid Canvas) ─
+class BlueprintCanvas(QWidget):
+    zone_selected = Signal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
 
-        self.floors = FLOORS
-        self.agents = [QuantumAgent(fl) for fl in self.floors for _ in range(fl["agents"])]
+        self.zones = ZONES
+        self.agents = [QuantumAgent(fl) for fl in FLOORS for _ in range(fl["agents"])]
         
-        self.hovered = None
-        self.selected = None
-        self.zoom_fl = None
+        # Create animated neural data packets running between department nodes
+        self.packets = []
+        for src, dst in CIRCUITS:
+            z_src = ZONES[src]
+            self.packets.append(DataPacket(src, dst, z_src["color"]))
+            
+        self.hovered_zone = None
+        self.selected_zone = None
         self.zoom_t = 0.0
         self.zoom_dir = 0
         self.tick_count = 0.0
-        
-        # Cyber particles list
-        self.particles = []
-        self.grid_fade = 0.0
 
         timer = QTimer(self)
         timer.timeout.connect(self._on_tick)
-        timer.start(24)
-
-    def _params(self):
-        W, H = self.width(), self.height()
-        tw = W * 0.25  # Reduced width slightly to prevent visual crowding
-        th = tw * 0.45
-        n = len(self.floors)
-        fh = (H * 0.65 - 3 * th) / n
-        fh = max(fh, 30)
-        return tw, th, fh
-
-    def _iso(self, gx, gy, gz, tw, th, fh):
-        ox = self.width() / 2
-        oy = self.height() * 0.16 + 3.0 * (th / 2)
-        sx = ox + (gx - gy) * (tw / 2)
-        sy = oy + (gx + gy) * (th / 2) - gz * fh
-        return QPointF(sx, sy)
-
-    def _top_face(self, gz, tw, th, fh, W=3):
-        tl = self._iso(0, 0, gz + 1, tw, th, fh)
-        tr = self._iso(W, 0, gz + 1, tw, th, fh)
-        br = self._iso(W, W, gz + 1, tw, th, fh)
-        bl = self._iso(0, W, gz + 1, tw, th, fh)
-        return tl, tr, br, bl
-
-    def _face_center(self, gz, tw, th, fh):
-        tl, tr, br, bl = self._top_face(gz, tw, th, fh)
-        return QPointF((tl.x() + tr.x() + br.x() + bl.x()) / 4,
-                       (tl.y() + tr.y() + br.y() + bl.y()) / 4)
+        timer.start(20)
 
     def _on_tick(self):
-        self.tick_count += 0.025
-        self.grid_fade = 0.6 + 0.3 * math.sin(self.tick_count * 1.5)
+        self.tick_count += 0.03
         
-        target_particles = 60
-        if len(self.particles) < target_particles:
-            self.particles.append(CyberParticle(self.width(), self.height()))
-
-        for p in self.particles:
-            p.tick(self.width(), self.height())
+        for p in self.packets:
+            p.tick()
 
         for ag in self.agents:
-            ag.tick()
+            # Get bound of current room
+            z = ZONES[ag.fl_id]
+            ag.tick(z["w"], z["h"])
 
-        # CEO Zoom easing transition
+        # Easing zoom transition to focused office room
         if self.zoom_dir != 0:
-            self.zoom_t = max(0.0, min(1.0, self.zoom_t + 0.045 * self.zoom_dir))
+            self.zoom_t = max(0.0, min(1.0, self.zoom_t + 0.05 * self.zoom_dir))
             if self.zoom_t >= 1.0: self.zoom_dir = 0
             if self.zoom_t <= 0.0:
                 self.zoom_dir = 0
-                self.zoom_fl = None
+                self.selected_zone = None
 
         self.update()
 
-    def zoom_to(self, fl):
-        self.zoom_fl = fl
+    def zoom_to(self, zone):
+        self.selected_zone = zone
         self.zoom_dir = 1 if self.zoom_t < 0.5 else -1
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
-        tw, th, fh = self._params()
 
-        # Deep grid gradient background
-        bg = QRadialGradient(W / 2, H * 0.45, max(W, H) * 0.8)
-        bg.setColorAt(0, QColor("#030713"))
+        # Deep blueprint space background
+        bg = QRadialGradient(W / 2, H / 2, max(W, H) * 0.7)
+        bg.setColorAt(0, QColor("#040714"))
         bg.setColorAt(1, QColor(C["bg_deep"]))
         p.fillRect(self.rect(), bg)
 
-        # Draw Tech HUD Compass Elements behind Spire
-        self._draw_hud_compass(p, W, H, tw, th)
+        # ── Technical Grid Lines ──
+        p.setPen(QPen(QColor(C["text_dark"]), 0.7, Qt.PenStyle.SolidLine))
+        grid_step = 40
+        for x in range(0, W, grid_step):
+            p.drawLine(x, 0, x, H)
+        for y in range(0, H, grid_step):
+            p.drawLine(0, y, W, y)
 
-        # Render rising data particles
-        self._draw_particles(p, tw, th, fh)
-
-        # Apply zoom transforms
-        p.save()
-        if self.zoom_fl and self.zoom_t > 0:
+        # Easing Zoom Transformation Matrix
+        zoom_scale = 1.0
+        zoom_tx, zoom_ty = 0.0, 0.0
+        if self.selected_zone and self.zoom_t > 0:
             ease_t = math.sin(self.zoom_t * math.pi / 2)
-            fl_idx = next((i for i, f in enumerate(self.floors) if f["id"] == self.zoom_fl["id"]), 0)
-            fc = self._face_center(fl_idx, tw, th, fh)
-            zoom_scale = 1.0 + ease_t * 0.6
-            zoom_tx = (W / 2 - fc.x()) * ease_t * 0.6
-            zoom_ty = (H / 2 - fc.y()) * ease_t * 0.5
+            z_info = ZONES[self.selected_zone["id"]]
+            zoom_scale = 1.0 + ease_t * 0.85
+            zoom_tx = (W / 2 - z_info["x"]) * ease_t * 0.85
+            zoom_ty = (H / 2 - z_info["y"]) * ease_t * 0.75
+            
+        p.save()
+        if zoom_scale != 1.0:
             p.translate(W / 2 + zoom_tx - W / 2 * zoom_scale, H / 2 + zoom_ty - H / 2 * zoom_scale)
             p.scale(zoom_scale, zoom_scale)
 
-        # Draw Spire Core Vertical Beam
-        self._draw_core_beam(p, tw, th, fh)
+        # ── 1. Draw Dotted Circuit Lines (Neural Network) ──
+        p.save()
+        p.setPen(QPen(QColor(C["neon_teal"] + "22"), 1.0, Qt.PenStyle.DashLine))
+        for src, dst in CIRCUITS:
+            z_src = ZONES[src]
+            z_dst = ZONES[dst]
+            p.drawLine(QPointF(z_src["x"], z_src["y"]), QPointF(z_dst["x"], z_dst["y"]))
+        p.restore()
 
-        # Draw Floors (Bottom to Top)
-        self._top_paths = []
-        for i, fl in enumerate(self.floors):
-            path = self._draw_spire_floor(p, i, fl, tw, th, fh)
-            self._top_paths.append((i, fl, path))
+        # ── 2. Draw Flowing Data Packets (Glowing Particles) ──
+        p.save()
+        for pkt in self.packets:
+            z_src = ZONES[pkt.start]
+            z_dst = ZONES[pkt.end]
+            dx = z_dst["x"] - z_src["x"]
+            dy = z_dst["y"] - z_src["y"]
+            px = z_src["x"] + dx * pkt.progress
+            py = z_src["y"] + dy * pkt.progress
+            
+            # Pulse glow
+            p.setPen(Qt.PenStyle.NoPen)
+            pc = QColor(pkt.color)
+            pc.setAlpha(160)
+            p.setBrush(pc)
+            p.drawEllipse(QPointF(px, py), pkt.size, pkt.size)
+        p.restore()
 
-        # Render Agents with orbits and laser links
+        # ── 3. Draw Translucent Office Blueprint Rooms ──
+        for fl_id, z in ZONES.items():
+            self._draw_blueprint_room(p, fl_id, z)
+
+        # ── 4. Draw Agents inside Office Rooms ──
         for ag in self.agents:
-            self._draw_spire_agent(p, ag, tw, th, fh)
+            self._draw_room_agent(p, ag)
 
         p.restore()
 
-        # CRT scanline overlay
-        p.setOpacity(0.012)
-        p.setPen(QPen(QColor(C["neon_teal"]), 1.0))
-        for y in range(0, H, 4):
-            p.drawLine(0, y, W, y)
-        p.setOpacity(1.0)
-
-        # Top dashboard details
-        self._draw_top_stats(p, W)
+        # Outer Tactical HUD Compass Ticks
+        self._draw_tactical_hud(p, W, H)
         p.end()
 
-    def _draw_hud_compass(self, p, W, H, tw, th):
+    def _draw_blueprint_room(self, p, fl_id, z):
+        is_sel = fl_id == (self.selected_zone["id"] if self.selected_zone else None)
+        is_hov = fl_id == self.hovered_zone
+        intensity = 1.35 if is_sel else (1.15 if is_hov else 1.0)
+        col = QColor(z["color"])
+
+        # Glassmorphic Box Fill (No more Solid Blocks!)
         p.save()
-        p.setOpacity(0.1 * self.grid_fade)
-        cx, cy = W / 2, H * 0.62
-        rx, ry = tw * 1.6, th * 1.6
-        p.setPen(QPen(QColor(C["neon_teal"]), 1.0))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawEllipse(QPointF(cx, cy), rx, ry)
-        p.drawEllipse(QPointF(cx, cy), rx * 0.8, ry * 0.8)
-        p.drawLine(cx - rx, cy, cx + rx, cy)
-        p.drawLine(cx, cy - ry, cx, cy + ry)
+        bg_col = QColor(C["bg_panel"])
+        bg_col.setAlpha(200 if is_sel else 135)
+        p.setBrush(bg_col)
         
-        p.setFont(QFont("Consolas", 7))
-        p.setPen(QColor(C["neon_teal"]))
-        p.drawText(QPointF(cx + rx * 0.82, cy - 5), "SPIRE_GRID_LOCK")
-        p.restore()
+        # Tech Blueprint Thin Outline Border
+        p.setPen(QPen(col, 1.2 if is_sel else 0.7))
+        rx = z["x"] - z["w"] / 2
+        ry = z["y"] - z["h"] / 2
+        p.drawRoundedRect(QRectF(rx, ry, z["w"], z["h"]), 6, 6)
 
-    def _draw_core_beam(self, p, tw, th, fh):
-        p.save()
-        n = len(self.floors)
-        bottom_c = self._face_center(0, tw, th, fh)
-        top_c = self._face_center(n - 1, tw, th, fh)
-        
-        beam_g = QLinearGradient(bottom_c, top_c)
-        c1 = QColor(C["neon_teal"])
-        c1.setAlpha(80)
-        c2 = QColor(C["neon_purple"])
-        c2.setAlpha(140)
-        beam_g.setColorAt(0, c1)
-        beam_g.setColorAt(1, c2)
+        # Micro Grid Floor Detail inside this specific office
+        p.setPen(QPen(col + "0f", 0.5))
+        for step_x in range(int(rx) + 15, int(rx + z["w"]), 20):
+            p.drawLine(step_x, ry, step_x, ry + z["h"])
+        for step_y in range(int(ry) + 15, int(ry + z["h"]), 20):
+            p.drawLine(rx, step_y, rx + z["w"], step_y)
 
-        p.setPen(QPen(beam_g, 3))
-        p.drawLine(bottom_c, top_c)
-        p.setPen(QPen(QColor("#ffffff"), 1.0))
-        p.drawLine(bottom_c, top_c)
-        p.restore()
+        # Draw Blueprint structural details (Office Furniture/Server Rack schematics)
+        self._draw_blueprint_contents(p, fl_id, z, is_sel)
 
-    def _draw_particles(self, p, tw, th, fh):
-        p.save()
-        for pt in self.particles:
-            iso_pt = self._iso(pt.gx, pt.gy, pt.gz, tw, th, fh)
-            cursor_pos = self.mapFromGlobal(self.cursor().pos())
-            dist = math.hypot(iso_pt.x() - cursor_pos.x(), iso_pt.y() - cursor_pos.y())
-            if dist < 60:
-                push_f = (60 - dist) * 0.35
-                angle = math.atan2(iso_pt.y() - cursor_pos.y(), iso_pt.x() - cursor_pos.x())
-                iso_pt.setX(iso_pt.x() + math.cos(angle) * push_f)
-                iso_pt.setY(iso_pt.y() + math.sin(angle) * push_f)
-
-            alpha_pulse = int(pt.alpha * (0.6 + 0.4 * math.sin(pt.pulse_phase)))
-            pc = QColor(pt.color)
-            pc.setAlpha(max(0, min(alpha_pulse, 255)))
-            
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(pc)
-            p.drawEllipse(iso_pt, pt.size, pt.size * 0.5)
-        p.restore()
-
-    def _draw_spire_floor(self, p, fl_idx, fl, tw, th, fh):
-        gz = fl_idx
-        W3 = 3
-        tl, tr, br, bl = self._top_face(gz, tw, th, fh, W3)
-        btl = self._iso(0, 0, gz, tw, th, fh)
-        btr = self._iso(W3, 0, gz, tw, th, fh)
-        bbr = self._iso(W3, W3, gz, tw, th, fh)
-        bbl = self._iso(0, W3, gz, tw, th, fh)
-
-        is_sel = fl["id"] == self.selected
-        is_hov = fl["id"] == self.hovered
-        pulse = abs(math.sin(self.tick_count * 1.5 + fl_idx * 0.7))
-        intensity = 1.4 if is_sel else (1.15 if is_hov else 1.0)
-
-        # CRITICAL AESTHETIC FIX: Highly Translucent glassmorphism for floor sides!
-        # This completely removes the "Giant Solid Green Sponge Cake" look.
-        col = QColor(fl["color"])
-        
-        # ── Translucent Left Wall ──
-        lf = QPainterPath()
-        lf.moveTo(tl); lf.lineTo(bl); lf.lineTo(bbl); lf.lineTo(btl)
-        lf.closeSubpath()
-        lc = QColor(C["bg_panel"])
-        lc.setAlpha(120)
-        p.fillPath(lf, lc)
-        
-        # Add slight neon outline color to sides
-        lc_edge = QColor(fl["color"])
-        lc_edge.setAlpha(int(35 * intensity))
-        p.fillPath(lf, lc_edge)
-
-        # ── Translucent Right Wall ──
-        rf = QPainterPath()
-        rf.moveTo(tr); rf.lineTo(br); rf.lineTo(bbr); rf.lineTo(btr)
-        rf.closeSubpath()
-        rc = QColor(C["bg_panel"])
-        rc.setAlpha(90)
-        p.fillPath(rf, rc)
-        
-        rc_edge = QColor(fl["color"])
-        rc_edge.setAlpha(int(25 * intensity))
-        p.fillPath(rf, rc_edge)
-
-        # ── Translucent Floor Surface with glowing core beam hole ──
-        top = QPainterPath()
-        top.moveTo(tl); top.lineTo(tr); top.lineTo(br); top.lineTo(bl)
-        top.closeSubpath()
-        
-        surface_grad = QLinearGradient(tl, br)
-        tc1 = QColor(fl["color"])
-        tc1.setAlpha(int(30 * intensity + 8 * pulse)) # Extremely light neon tint
-        tc2 = QColor("#081024")
-        tc2.setAlpha(190)
-        surface_grad.setColorAt(0, tc1)
-        surface_grad.setColorAt(1, tc2)
-        p.fillPath(top, surface_grad)
-
-        # ── Fine Holographic Gridlines on Floor Surface ──
-        p.save()
-        p.setPen(QPen(QColor(fl["color"] + "18"), 0.8))
-        grid_lines = 4
-        for gi in range(1, grid_lines):
-            frac = gi / grid_lines
-            # Drawing parallel lines
-            p.drawLine(QPointF(tl.x() + (bl.x() - tl.x()) * frac, tl.y() + (bl.y() - tl.y()) * frac),
-                       QPointF(tr.x() + (br.x() - tr.x()) * frac, tr.y() + (br.y() - tr.y()) * frac))
-            p.drawLine(QPointF(tl.x() + (tr.x() - tl.x()) * frac, tl.y() + (tr.y() - tl.y()) * frac),
-                       QPointF(bl.x() + (br.x() - bl.x()) * frac, bl.y() + (br.y() - bl.y()) * frac))
-        p.restore()
-
-        # ── High-Tech Structural Neon Borders ──
-        border_w = 2.0 if is_sel else (1.2 if is_hov else 0.6)
-        border_c = QColor(get_health_color(fl["health"])) if is_sel else col
-        border_c.setAlpha(int(160 * intensity))
-        p.setPen(QPen(border_c, border_w))
-        p.drawPath(top)
-        p.drawPath(lf)
-        p.drawPath(rf)
-
-        # Tech corner brackets for active HUD focus
-        self._draw_corners_bracket(p, tl, tr, br, bl, border_c, is_sel)
-
-        cx = (tl.x() + tr.x() + br.x() + bl.x()) / 4
-        cy = (tl.y() + tr.y() + br.y() + bl.y()) / 4
-        fw = abs(tr.x() - tl.x()) * 0.7
-        fhy = abs(bl.y() - tl.y()) * 0.65
-        
-        # Render floor-specific fine graphics
-        self._draw_floor_graphics(p, fl["id"], cx, cy, fw, fhy, col)
-
-        # Delicate technical text indicators instead of large wordy headers
+        # Technical room identifier text
         p.setPen(QColor(C["text_white"]) if is_sel else QColor(C["text_gray"]))
-        f_sz = max(7, int(tw * 0.075))
-        font = QFont("Consolas", f_sz, QFont.Weight.Bold if is_sel else QFont.Weight.Normal)
-        p.setFont(font)
-        p.drawText(QPointF(cx - fw * 0.44, cy + f_sz * 0.6), f"{fl['icon']} {fl['name']}")
+        p.setFont(QFont("Consolas", 7, QFont.Weight.Bold if is_sel else QFont.Weight.Normal))
+        p.drawText(QRectF(rx + 6, ry + 6, z["w"] - 12, 15), Qt.AlignmentFlag.AlignLeft, f"{z['icon']} {z['name']}")
 
-        # Mini vertical indicator bar on side of each plate
-        bx = btl.x() + 4
-        by = (btl.y() + tl.y()) / 2 - 3
-        bw = min(tw * 0.32, 45)
-        bh = 3
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor("#ffffff12"))
-        p.drawRoundedRect(QRectF(bx, by, bw, bh), 1, 1)
-        p.setBrush(QColor(get_health_color(fl["health"])))
-        p.drawRoundedRect(QRectF(bx, by, bw * fl["health"] / 100, bh), 1, 1)
-
-        return top
-
-    def _draw_corners_bracket(self, p, tl, tr, br, bl, col, active):
-        if not active: return
-        p.save()
-        p.setPen(QPen(col, 2.0))
-        length = 10
-        for pt, dx, dy in [(tl, 1, 0.5), (tr, -1, 0.5), (br, -1, -0.5), (bl, 1, -0.5)]:
-            p.drawLine(pt, QPointF(pt.x() + dx * length, pt.y() + dy * length))
-        p.restore()
-
-    def _draw_floor_graphics(self, p, floor_id, cx, cy, fw, fh, col):
-        t = self.tick_count
-        p.save()
-        p.setClipRect(QRectF(cx - fw * 0.8, cy - fh * 0.9, fw * 1.6, fh * 1.8))
-
-        if floor_id == "ceo":
-            p.setPen(QPen(QColor(C["neon_gold"]), 0.9))
-            for i in range(3):
-                scale = 0.3 + i * 0.22
-                p.drawEllipse(QPointF(cx, cy), fw * scale, fh * scale)
-            # Glowing core diamond
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QColor(C["neon_gold"] + "aa"))
-            d_sz = 5 + 3 * abs(math.sin(t * 2.5))
-            p.drawPolygon([QPointF(cx, cy - d_sz), QPointF(cx + d_sz * 1.3, cy),
-                           QPointF(cx, cy + d_sz), QPointF(cx - d_sz * 1.3, cy)])
-
-        elif floor_id == "strategy":
-            r = min(fw, fh) * 0.5
-            p.setPen(QPen(QColor(C["neon_purple"] + "45"), 0.8))
-            p.drawEllipse(QPointF(cx, cy), r, r * 0.45)
-            p.drawEllipse(QPointF(cx, cy), r * 0.5, r * 0.45 * 0.5)
-            
-            sweep_a = (t * 2.0) % math.tau
-            p.setPen(QPen(QColor(C["neon_purple"]), 1.4))
-            p.drawLine(QPointF(cx, cy), QPointF(cx + r * math.cos(sweep_a), cy + r * 0.45 * math.sin(sweep_a)))
-
-        elif floor_id == "eng":
-            p.setFont(QFont("Consolas", 5))
-            p.setPen(QColor(C["neon_teal"] + "aa"))
-            for col_idx in range(4):
-                fx = cx - fw * 0.3 + col_idx * fw * 0.2
-                for char_idx in range(3):
-                    fy = cy - fh * 0.35 + char_idx * fh * 0.3
-                    ch = random.choice(["1", "0", "x", "y", "a", "b"])
-                    op = abs(math.sin(t * 1.8 + col_idx + char_idx))
-                    p.setOpacity(op)
-                    p.drawText(QPointF(fx, fy), ch)
-            p.setOpacity(1.0)
-
-        elif floor_id == "fin":
-            p.setPen(QPen(QColor(C["neon_green"]), 1.0))
-            candlesticks = 5
-            for idx in range(candlesticks):
-                bx = cx - fw * 0.3 + idx * fw * 0.16
-                by = cy + math.sin(t * 1.5 + idx) * fh * 0.3
-                cw = fw * 0.07
-                ch2 = fh * (0.18 + 0.12 * abs(math.sin(t + idx)))
-                p.setBrush(QColor(C["neon_green"] + "88"))
-                p.drawRect(QRectF(bx, by - ch2 / 2, cw, ch2))
-                p.drawLine(QPointF(bx + cw / 2, by - ch2), QPointF(bx + cw / 2, by + ch2))
-
-        elif floor_id == "marketing":
-            p.setPen(QPen(QColor(C["neon_pink"]), 1.2))
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            wave = QPainterPath()
-            wave.moveTo(cx - fw * 0.4, cy)
-            for x in range(int(fw * 0.8)):
-                wx = cx - fw * 0.4 + x
-                wy = cy + math.sin(x * 0.1 + t * 3.5) * fh * 0.3
-                wave.lineTo(wx, wy)
-            p.drawPath(wave)
-
-        elif floor_id == "sales":
-            p.setPen(QPen(QColor("#f9731688"), 1.8))
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.drawEllipse(QPointF(cx, cy), fw * 0.35, fh * 0.35)
-            pulse_a = (t * 2.8) % math.tau
-            px = cx + fw * 0.35 * math.cos(pulse_a)
-            py = cy + fh * 0.35 * math.sin(pulse_a)
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QColor("#ffffff"))
-            p.drawEllipse(QPointF(px, py), 3.5, 3.5)
-
-        elif floor_id == "ops":
-            p.setPen(QPen(QColor("#06b6d4"), 1.0))
-            p.setBrush(Qt.BrushStyle.NoBrush)
-            p.drawArc(QRectF(cx - fw * 0.32, cy - fh * 0.32, fw * 0.64, fh * 0.64), int(t * 12 * 57.29), int(180 * 16))
-            p.setFont(QFont("Consolas", 5))
-            p.drawText(QPointF(cx - 10, cy + 2), f"O_{int((t*8)%99):02d}")
+        # Coords label on bottom right
+        p.setPen(QColor(col + "aa" if is_sel else C["text_dark"]))
+        p.setFont(QFont("Consolas", 5))
+        p.drawText(QRectF(rx + 6, ry + z["h"] - 12, z["w"] - 12, 10), Qt.AlignmentFlag.AlignRight,
+                   f"LOC_X: {z['x']} | LOC_Y: {z['y']}")
 
         p.restore()
 
-    def _draw_spire_agent(self, p, ag, tw, th, fh):
-        fl_idx = next((i for i, f in enumerate(self.floors) if f["id"] == ag.fl_id), 0)
-        c = self._face_center(fl_idx, tw, th, fh)
-        cx, cy = c.x(), c.y()
-        
-        # Elegant Thin Dashed Orbit lines drawn on screen!
+    def _draw_blueprint_contents(self, p, fl_id, z, active):
         p.save()
-        p.setPen(QPen(QColor(ag.color + "12"), 0.8, Qt.PenStyle.DashLine))
+        col = QColor(z["color"])
+        col.setAlpha(60 if active else 30)
+        p.setPen(QPen(col, 0.8))
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawEllipse(QPointF(cx, cy), tw * ag.orbit_r, th * ag.orbit_r)
+
+        cx, cy = z["x"], z["y"]
+
+        if fl_id == "ceo":
+            # Prestigious executive desk and circular conference blueprint
+            p.drawEllipse(QPointF(cx, cy + 10), 22, 16)
+            p.drawRect(QRectF(cx - 35, cy + 8, 70, 4))
+        elif fl_id == "strategy":
+            # Large circular tactical holo-table blueprint
+            p.drawEllipse(QPointF(cx, cy + 12), 32, 22)
+            p.drawEllipse(QPointF(cx, cy + 12), 15, 10)
+            p.drawLine(cx - 32, cy + 12, cx + 32, cy + 12)
+        elif fl_id == "eng":
+            # Grid representing rows of server racks
+            p.drawRect(QRectF(cx - 40, cy - 10, 20, 40))
+            p.drawRect(QRectF(cx + 20, cy - 10, 20, 40))
+            for i in range(4):
+                p.drawLine(cx - 40, cy - 10 + i*13, cx - 20, cy - 10 + i*13)
+                p.drawLine(cx + 20, cy - 10 + i*13, cx + 40, cy - 10 + i*13)
+        elif fl_id == "fin":
+            # Multiple terminal workstation layouts
+            p.drawRect(QRectF(cx - 45, cy + 5, 25, 15))
+            p.drawRect(QRectF(cx + 20, cy + 5, 25, 15))
+            p.drawLine(cx - 45, cy + 5, cx - 20, cy + 20)
+            p.drawLine(cx + 20, cy + 5, cx + 45, cy + 20)
+        elif fl_id == "marketing":
+            # Circular soundwaves blueprint layout
+            p.drawArc(QRectF(cx - 30, cy, 60, 40), 0, 180 * 16)
+            p.drawEllipse(QPointF(cx, cy + 20), 10, 8)
+        elif fl_id == "sales":
+            # Deal pipeline tubes
+            p.drawRoundedRect(QRectF(cx - 40, cy + 5, 80, 12), 4, 4)
+            p.drawEllipse(QPointF(cx - 20, cy + 11), 3, 3)
+            p.drawEllipse(QPointF(cx + 20, cy + 11), 3, 3)
+        elif fl_id == "ops":
+            # Dual rotating machinery wheels schematic
+            p.drawEllipse(QPointF(cx - 25, cy + 12), 14, 14)
+            p.drawEllipse(QPointF(cx + 25, cy + 12), 10, 10)
+
         p.restore()
 
-        # Orb coordinates with precession noise
-        r_orbit = tw * ag.orbit_r
-        precession = 0.04 * math.sin(self.tick_count + ag.pulse)
-        sx = cx + r_orbit * math.cos(ag.phase)
-        sy = cy + r_orbit * math.sin(ag.phase + precession) * 0.45
-        orb_r = max(4.0, tw * 0.035)
+    def _draw_room_agent(self, p, ag):
+        z = ZONES[ag.fl_id]
+        # Bounded local room coordinates transformed to global blueprint coords
+        sx = z["x"] + ag.px
+        sy = z["y"] + ag.py
+        orb_r = 4.5
 
-        # Glowing neural trails
+        # Beautiful clean plasma trails
         for i, tp in enumerate(ag.trail):
             alpha = int(120 * (i / max(len(ag.trail), 1)) ** 1.8)
-            tr_r = orb_r * 0.45 * (i / max(len(ag.trail), 1))
             tc = QColor(ag.color)
             tc.setAlpha(alpha)
             p.setBrush(tc)
             p.setPen(Qt.PenStyle.NoPen)
-            p.drawEllipse(tp, tr_r, tr_r * 0.5)
+            p.drawEllipse(tp, 2.0, 2.0)
 
         ag.trail.append(QPointF(sx, sy))
-        if len(ag.trail) > 18: ag.trail.pop(0)
+        if len(ag.trail) > 10: ag.trail.pop(0)
 
-        # Pulse glow
+        # Pulse Glow
         pf = abs(math.sin(ag.pulse))
-        glow_r = orb_r * (1.8 + 1.0 * pf)
-        glow = QRadialGradient(sx, sy, glow_r)
-        gc = QColor(ag.color)
-        gc.setAlpha(int(60 * pf))
-        glow.setColorAt(0, gc)
-        glow.setColorAt(1, QColor(0, 0, 0, 0))
-        p.setBrush(glow)
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(QPointF(sx, sy), glow_r, glow_r * 0.6)
+        gc = QColor(ag.color)
+        gc.setAlpha(int(65 * pf))
+        p.setBrush(gc)
+        p.drawEllipse(QPointF(sx, sy), orb_r * 2.2, orb_r * 2.2)
 
-        # Agent Core
-        core = QRadialGradient(sx - orb_r * 0.35, sy - orb_r * 0.35, orb_r)
-        core.setColorAt(0, QColor(255, 255, 255, 240))
-        core.setColorAt(0.4, QColor(ag.color))
-        core.setColorAt(1, QColor(ag.color).darker(230))
+        # Core
+        core = QRadialGradient(sx - 1, sy - 1, orb_r)
+        core.setColorAt(0, QColor("#ffffff"))
+        core.setColorAt(0.5, QColor(ag.color))
+        core.setColorAt(1, QColor(ag.color).darker(200))
         p.setBrush(core)
-        p.setPen(QPen(QColor(ag.color).lighter(160), 0.6))
         p.drawEllipse(QPointF(sx, sy), orb_r, orb_r)
 
-        # Neural task links shoot to the Spire core
-        if ag.status == "AKTİF" and random.random() < 0.12:
-            p.save()
-            p.setOpacity(0.35)
-            p.setPen(QPen(QColor(ag.color), 1.0))
-            p.drawLine(QPointF(sx, sy), c)
-            p.restore()
-
-    def _draw_top_stats(self, p, W):
+    def _draw_tactical_hud(self, p, W, H):
         p.save()
-        p.setPen(QColor(C["text_gray"]))
+        p.setPen(QPen(QColor(C["neon_teal"] + "55"), 1.0))
         p.setFont(QFont("Consolas", 7))
-        p.drawText(QRectF(15, 6, W - 30, 20), Qt.AlignmentFlag.AlignLeft,
-                   f"📡 NETWORK_LINK: ACTIVE | CORE_TEMP: 44.2°C | HIGH_RESOLUTION_GRID: LOCKED")
+        
+        # Corner tactical brackets on screen borders
+        pad = 12
+        length = 15
+        
+        # Top-Left
+        p.drawLine(pad, pad, pad + length, pad)
+        p.drawLine(pad, pad, pad, pad + length)
+        # Top-Right
+        p.drawLine(W - pad, pad, W - pad - length, pad)
+        p.drawLine(W - pad, pad, W - pad, pad + length)
+        # Bottom-Left
+        p.drawLine(pad, H - pad, pad + length, H - pad)
+        p.drawLine(pad, H - pad, pad, H - pad - length)
+        # Bottom-Right
+        p.drawLine(W - pad, H - pad, W - pad - length, H - pad)
+        p.drawLine(W - pad, H - pad, W - pad, H - pad - length)
+
+        p.drawText(QPointF(20, 22), "SYS_GRID: ON-LINE")
+        p.drawText(QPointF(W - 130, 22), f"TACTICAL_BLUEPRINT_v10")
         p.restore()
 
     def mouseMoveEvent(self, event):
         pos = event.position()
-        self.hovered = None
-        if hasattr(self, "_top_paths"):
-            for _, fl, path in reversed(self._top_paths):
-                if path.contains(pos):
-                    self.hovered = fl["id"]
-                    self.setCursor(Qt.CursorShape.PointingHandCursor)
-                    return
+        self.hovered_zone = None
+        for fl_id, z in ZONES.items():
+            rx = z["x"] - z["w"] / 2
+            ry = z["y"] - z["h"] / 2
+            if QRectF(rx, ry, z["w"], z["h"]).contains(pos):
+                self.hovered_zone = fl_id
+                self.setCursor(Qt.CursorShape.PointingHandCursor)
+                return
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def mousePressEvent(self, event):
         pos = event.position()
-        if hasattr(self, "_top_paths"):
-            for _, fl, path in reversed(self._top_paths):
-                if path.contains(pos):
-                    prev = self.selected
-                    self.selected = fl["id"]
-                    self.floor_selected.emit(fl)
-                    if prev == fl["id"]:
-                        self.zoom_to(fl)
-                    return
+        for fl_id, z in ZONES.items():
+            rx = z["x"] - z["w"] / 2
+            ry = z["y"] - z["h"] / 2
+            if QRectF(rx, ry, z["w"], z["h"]).contains(pos):
+                fl = next(f for f in FLOORS if f["id"] == fl_id)
+                self.zone_selected.emit(fl)
+                self.zoom_to(fl)
+                return
 
 
 # ── REAL-TIME OSCILLOSCOPE (NASA Telemetry Waveform) ────────────────
 class OscilloscopeWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(70)
+        self.setFixedHeight(60)
         self.phase = 0.0
         
         self.timer = QTimer(self)
@@ -662,17 +476,17 @@ class OscilloscopeWidget(QWidget):
 
         # Grid lines
         p.setPen(QPen(QColor("#0d162a"), 0.8))
-        for y in range(0, H, 14):
+        for y in range(0, H, 15):
             p.drawLine(0, y, W, y)
-        for x in range(0, W, 35):
+        for x in range(0, W, 40):
             p.drawLine(x, 0, x, H)
 
         # Wave paths
         path = QPainterPath()
         path.moveTo(0, H / 2)
         for x in range(0, W, 3):
-            y = H / 2 + math.sin(x * 0.045 + self.phase) * (H * 0.28) * (0.85 + 0.15 * math.cos(self.phase * 0.4))
-            y += math.sin(x * 0.2 + self.phase * 2) * 2
+            y = H / 2 + math.sin(x * 0.04 + self.phase) * (H * 0.28) * (0.8 + 0.2 * math.cos(self.phase * 0.35))
+            y += math.sin(x * 0.18 + self.phase * 2) * 2
             path.lineTo(x, y)
 
         p.setOpacity(0.15)
@@ -680,7 +494,7 @@ class OscilloscopeWidget(QWidget):
         p.drawPath(path)
 
         p.setOpacity(1.0)
-        p.setPen(QPen(QColor(C["neon_teal"]), 1.5))
+        p.setPen(QPen(QColor(C["neon_teal"]), 1.4))
         p.drawPath(path)
 
 
@@ -704,12 +518,11 @@ class TelemetryGaugeWidget(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         W, H = self.width(), self.height()
         cx, cy = W / 2, H / 2
-        r = 38
+        r = 35
 
-        # Background
         p.fillRect(self.rect(), QColor("#040813"))
 
-        # Outer tech ticks
+        # Outer ticks
         p.save()
         p.translate(cx, cy)
         p.rotate(self.angle)
@@ -719,15 +532,13 @@ class TelemetryGaugeWidget(QWidget):
             p.drawLine(r - 5, 0, r, 0)
         p.restore()
 
-        # Inner pulsing circle
+        # Inner pulse
         p.save()
         pulse = 0.8 + 0.2 * abs(math.sin(self.angle * 0.05))
         p.setPen(QPen(QColor(C["neon_pink"] + "aa"), 1.2))
-        p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawEllipse(QPointF(cx, cy), r * 0.7 * pulse, r * 0.7 * pulse)
         p.restore()
 
-        # Text Overlay
         p.setPen(QColor(C["neon_teal"]))
         p.setFont(QFont("Consolas", 7))
         p.drawText(QRectF(0, H - 15, W, 15), Qt.AlignmentFlag.AlignCenter, "CORE_NEURAL_SPIN: ACTIVE")
@@ -866,7 +677,7 @@ class CommandPalette(QDialog):
             super().keyPressEvent(e)
 
 
-# ── COMPACT CHAT BUBBLES ─────────────────────────────────────────────
+# ── COMPACT HIGH-READABILITY CHAT BUBBLES ───────────────────────────
 class ChatBubble(QWidget):
     def __init__(self, text, is_jarvis, time_str, parent=None):
         super().__init__(parent)
@@ -879,9 +690,8 @@ class ChatBubble(QWidget):
         self.box = QFrame()
         
         # CRITICAL AESTHETIC FIX: Beautifully size-restricted bubbles!
-        # This completely removes the "Infinite wide cyan border stretching across the screen" bug.
         if is_jarvis:
-            bg_col = "#060a16cc"
+            bg_col = "#060a16e6"
             border_col = C["neon_teal"]
             self.box.setStyleSheet(f"""
                 QFrame {{
@@ -891,7 +701,7 @@ class ChatBubble(QWidget):
                 }}
             """)
             main_lay.addWidget(self.box)
-            main_lay.addStretch(2)  # Generous stretch on right side to push bubble left and restrict its width!
+            main_lay.addStretch(2)  # Limits width perfectly
         else:
             bg_col = "#3b82f61e"
             border_col = "#3b82f666"
@@ -902,7 +712,7 @@ class ChatBubble(QWidget):
                     border-radius: 12px;
                 }}
             """)
-            main_lay.addStretch(2)  # Generous stretch on left side to push bubble right and restrict its width!
+            main_lay.addStretch(2)
             main_lay.addWidget(self.box)
 
         box_lay = QVBoxLayout(self.box)
@@ -911,18 +721,22 @@ class ChatBubble(QWidget):
 
         header = QHBoxLayout()
         sender = QLabel("🤖 JARVIS" if is_jarvis else "👤 CEO USER")
-        sender.setStyleSheet(f"font-weight: bold; font-size: 10px; color: {C['neon_teal'] if is_jarvis else C['neon_gold']}; font-family: 'Consolas';")
+        
+        # CRITICAL READABILITY FIX: Increased font-size and distinct weight!
+        sender.setStyleSheet(f"font-weight: bold; font-size: 11px; color: {C['neon_teal'] if is_jarvis else C['neon_gold']}; font-family: 'Consolas';")
         header.addWidget(sender)
         header.addStretch()
         
         ts = QLabel(time_str)
-        ts.setStyleSheet(f"color: {C['text_gray']}; font-size: 8px; font-family: 'Consolas';")
+        ts.setStyleSheet(f"color: {C['text_gray']}; font-size: 9px; font-family: 'Consolas';")
         header.addWidget(ts)
         box_lay.addLayout(header)
 
         body = QLabel(text)
         body.setWordWrap(True)
-        body.setStyleSheet(f"color: {C['text_white']}; font-size: 11px; font-family: 'Segoe UI'; line-height: 140%;")
+        
+        # CRITICAL READABILITY FIX: High contrast 12px Segoe UI for perfect reading!
+        body.setStyleSheet(f"color: {C['text_white']}; font-size: 12px; font-family: 'Segoe UI', sans-serif; line-height: 145%;")
         box_lay.addWidget(body)
 
 
@@ -1044,7 +858,7 @@ class ChatPanel(QWidget):
 
         lay.addWidget(inp_frame)
 
-        self.add_message("Zezelabs Holding Siber Karargah Kontrol Arayüzü aktif.\nJARVIS v9.0 Neural Engine çevrimdışı ve bulut hibrit modda hazır. Ne arzu edersiniz?", True)
+        self.add_message("Zezelabs Holding Siber Karargah Kontrol Arayüzü aktif.\nJARVIS v10.0 Neural Engine çevrimdışı ve bulut hibrit modda hazır. Ne arzu edersiniz?", True)
 
     def add_message(self, text, is_jarvis):
         self.bubbles_lay.takeAt(self.bubbles_lay.count() - 1)
@@ -1081,7 +895,7 @@ class ChatPanel(QWidget):
         self.message_sent.emit(txt)
 
 
-# ── DEPARTMENTS SIDEBAR ──────────────────────────────────────────────
+# ── DEPARTMENTS SIDEBAR (SCROLLABLE & NO CLIPPING) ───────────────────
 class SidebarPanel(QWidget):
     floor_selected = Signal(dict)
 
@@ -1126,32 +940,49 @@ class SidebarPanel(QWidget):
         dl.setStyleSheet(f"color: {C['text_gray']}; font-size: 8px; font-weight: bold; letter-spacing: 1px; padding-left: 2px;")
         lay.addWidget(dl)
 
+        # CRITICAL AESTHETIC FIX: Wrapped in QScrollArea to prevent ANY overlapping / clipping!
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background: transparent;")
+        self.scroll_lay = QVBoxLayout(scroll_content)
+        self.scroll_lay.setContentsMargins(0, 0, 0, 0)
+        self.scroll_lay.setSpacing(6)
+
         self.cards = {}
         for fl in FLOORS:
             card = self._make_card(fl)
-            lay.addWidget(card)
+            self.scroll_lay.addWidget(card)
             self.cards[fl["id"]] = card
 
-        lay.addStretch()
+        self.scroll_lay.addStretch()
+        self.scroll.setWidget(scroll_content)
+        lay.addWidget(self.scroll)
+
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet(f"color: {C['border']}; margin: 6px 0px;")
+        lay.addWidget(sep2)
 
         self.sys_led = QLabel("● CORE SYSTEM LOCK")
         self.sys_led.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.sys_led.setStyleSheet(f"color: {C['neon_green']}; font-size: 8px; font-weight: bold; font-family: 'Consolas';")
         lay.addWidget(self.sys_led)
 
-        ver = QLabel("JARVIS HUD v9.0")
+        ver = QLabel("JARVIS HUD v10.0")
         ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ver.setStyleSheet(f"color: {C['text_dark']}; font-size: 7px; border: 1px solid {C['border']}; border-radius: 4px; padding: 2px;")
         lay.addWidget(ver)
 
     def _make_card(self, fl):
         card = QFrame()
-        card.setFixedHeight(50)
+        card.setFixedHeight(48)  # Slightly reduced card height
         card.setCursor(Qt.CursorShape.PointingHandCursor)
         card.setProperty("fl_id", fl["id"])
         
-        # CRITICAL AESTHETIC FIX: Pure translucent card look!
-        # This completely removes the aggressive solid red card clashing.
+        # Transparent border look
         card.setStyleSheet(f"""
             QFrame {{
                 background: transparent;
@@ -1168,14 +999,14 @@ class SidebarPanel(QWidget):
         c_lay.setSpacing(6)
 
         ico = QLabel(fl["icon"])
-        ico.setFont(QFont("Segoe UI", 13))
-        ico.setFixedWidth(20)
+        ico.setFont(QFont("Segoe UI", 12))
+        ico.setFixedWidth(18)
         c_lay.addWidget(ico)
 
         info = QVBoxLayout()
         info.setSpacing(1)
         name = QLabel(fl["name"])
-        name.setStyleSheet(f"color: {C['text_white']}; font-size: 10px; font-weight: bold; font-family: 'Segoe UI';")
+        name.setStyleSheet(f"color: {C['text_white']}; font-size: 9.5px; font-weight: bold; font-family: 'Segoe UI';")
         info.addWidget(name)
 
         hc = get_health_color(fl["health"])
@@ -1212,7 +1043,6 @@ class SidebarPanel(QWidget):
             fl = next(f for f in FLOORS if f["id"] == fid2)
             sel = (fid2 == fid)
             
-            # Subtle glowing border and trans-back instead of opaque solid coloring!
             border_c = fl["color"] if sel else fl["color"] + "22"
             bg = f"{fl['color']}18" if sel else "transparent"
             card.setStyleSheet(f"""
@@ -1305,7 +1135,7 @@ class TelemetryPanel(QWidget):
         sep2.setStyleSheet(f"color: {C['border']};")
         lay.addWidget(sep2)
 
-        # NASA Waveform Oscilloscope & Circular Spin Telemetry
+        # Oscilloscope and Telemetry spin
         self.oscilloscope = OscilloscopeWidget()
         self.telemetry_spin = TelemetryGaugeWidget()
         lay.addWidget(self.telemetry_spin)
@@ -1334,7 +1164,6 @@ class TelemetryPanel(QWidget):
         """)
         lay.addWidget(self.log_txt)
 
-        # Dynamic, diverse and realistic system events instead of a plain wall of text!
         self.pool = [
             ("SUCCESS", "Ajan nöron faza başarıyla kilitlendi."),
             ("INFO", "FastAPI ağ geçidi taranıyor... [Port: 8000]"),
@@ -1349,7 +1178,7 @@ class TelemetryPanel(QWidget):
         self.sim_timer = QTimer(self)
         self.sim_timer.timeout.connect(self._simulate)
         self.sim_timer.start(1800)
-        self._log("SUCCESS", "ZEZELABS Quantum Command Center v9.0 aktifleşti.")
+        self._log("SUCCESS", "ZEZELABS Quantum Command Center v10.0 aktifleşti.")
         self._simulate()
 
     def _simulate(self):
@@ -1371,7 +1200,6 @@ class TelemetryPanel(QWidget):
         }
         col = color_map.get(level, C["neon_teal"])
         
-        # HTML formatting for sleek logging
         html_msg = f"<span style='color:{C['text_gray']}'>[{ts}]</span> <span style='color:{col};font-weight:bold;'>[{level}]</span> <span style='color:{C['text_white']}'>{text}</span>"
         self.log_txt.append(html_msg)
         self.log_txt.verticalScrollBar().setValue(self.log_txt.verticalScrollBar().maximum())
@@ -1383,12 +1211,12 @@ class TelemetryPanel(QWidget):
         self._log("INFO", f"Odak departman değişti: {fl['name']}")
 
 
-# ── MAIN COMMAND WINDOW (SpaceX cockpit aesthetic) ──────────────────
+# ── MAIN COMMAND WINDOW ──────────────────────────────────────────────
 class QuantumHQ(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ZEZELABS — QUANTUM COMMAND CENTER")
-        self.resize(1400, 880)
+        self.resize(1420, 900)
         self.setMinimumSize(1150, 750)
         
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
@@ -1421,10 +1249,10 @@ class QuantumHQ(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # 1. Custom Frameless Title Bar
+        # Title Bar
         root.addWidget(self._create_title_bar())
 
-        # 2. Main split view layout
+        # Main splitter layout
         row = QHBoxLayout()
         row.setSpacing(0)
         row.setContentsMargins(0, 0, 0, 0)
@@ -1433,14 +1261,14 @@ class QuantumHQ(QMainWindow):
         self.sidebar.floor_selected.connect(self._on_floor_selected)
         row.addWidget(self.sidebar)
 
-        # Center Column (Spire and Chat panel)
+        # Center Column
         center_widget = QWidget()
         center_lay = QVBoxLayout(center_widget)
         center_lay.setContentsMargins(10, 10, 10, 10)
         center_lay.setSpacing(8)
 
-        self.spire = IsometricSpire()
-        self.spire.floor_selected.connect(self._on_floor_selected)
+        self.spire = BlueprintCanvas()
+        self.spire.zone_selected.connect(self._on_floor_selected)
         center_lay.addWidget(self.spire, 6)
 
         self.chat = ChatPanel()
@@ -1455,7 +1283,7 @@ class QuantumHQ(QMainWindow):
 
         root.addLayout(row, 1)
 
-        # 3. Micro Status Footer
+        # Footer
         root.addWidget(self._create_footer())
 
     def _create_title_bar(self):
@@ -1468,7 +1296,6 @@ class QuantumHQ(QMainWindow):
         lay.setContentsMargins(14, 0, 14, 0)
         lay.setSpacing(8)
 
-        # macOS style window triggers
         for col, fn in [("#ff5f57", "close"), ("#febc2e", "min"), ("#28c840", "max")]:
             btn = QPushButton()
             btn.setFixedSize(12, 12)
@@ -1606,7 +1433,7 @@ class QuantumHQ(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("ZEZELABS Quantum Command Center")
-    app.setApplicationVersion("9.0.0")
+    app.setApplicationVersion("10.0.0")
 
     palette = QPalette()
     palette.setColor(QPalette.ColorRole.Window, QColor(C["bg_deep"]))
