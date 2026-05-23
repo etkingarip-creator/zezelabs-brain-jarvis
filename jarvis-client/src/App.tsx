@@ -1,12 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './components/sidebar';
 import Telemetry from './components/telemetry';
 import Chat from './components/chat';
-import NeuralNetwork3D from './components/NeuralNetwork3D';
 import './App.css';
 
 function App() {
   const [selectedDeptId, setSelectedDeptId] = useState('zeze_prompt');
+
+  useEffect(() => {
+    // Phase 3 Bridge: Listen to postMessages coming from Godot WebGL simulator iframe
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'SELECT_DEPT') {
+        setSelectedDeptId(event.data.deptId);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   return (
     <div style={{
@@ -47,7 +57,7 @@ function App() {
         {/* Left sidebar listing corporate departments */}
         <Sidebar selectedDeptId={selectedDeptId} onSelectDept={setSelectedDeptId} />
 
-        {/* Central visual core area (Godot placeholder ThreeJS network) */}
+        {/* Central visual core area (Godot WebGL Embedded iframe) */}
         <main style={{
           flex: 1,
           display: 'flex',
@@ -57,8 +67,26 @@ function App() {
           overflowY: 'auto',
           background: '#050811'
         }}>
-          {/* Central 3D neural grid visualizer */}
-          <NeuralNetwork3D />
+          {/* Godot WebGL Embedded isometric 2.5D building simulator */}
+          <div style={{
+            background: '#070d19',
+            borderRadius: '12px',
+            border: '1px solid #1c2842',
+            overflow: 'hidden',
+            height: '380px',
+            position: 'relative'
+          }}>
+            <iframe
+              src="/godot_webgl_simulator.html"
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                background: 'transparent'
+              }}
+              title="Godot 2.5D Isometric Building WebGL Simulator"
+            />
+          </div>
 
           {/* Underneath chat assistant core */}
           <div style={{ flex: 1, minHeight: '380px' }}>

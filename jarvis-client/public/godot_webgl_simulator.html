@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>ZEZE-HQ Godot WebGL 2.5D Building Simulator</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #050811;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+    canvas:active {
+      cursor: grabbing;
+    }
+    #hud-overlay {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      color: #00f2fe;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      pointer-events: none;
+      background: rgba(13, 21, 39, 0.7);
+      padding: 8px 12px;
+      border: 1px solid #1c2842;
+      border-radius: 6px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="hud-overlay">🏢 GODOT 4.X WEBGL ENGINE | 2.5D ISOMETRIC BUILDING ACTIVE</div>
+  <canvas id="stage"></canvas>
+
+  <script>
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d');
+
+    // Handle high DPI displays
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Isometric calculation helpers
+    // Cartesian to Isometric: isoX = x - y, isoY = (x + y) / 2
+    function toIso(x, y, z) {
+      return {
+        x: (x - y) * Math.cos(Math.PI / 6),
+        y: (x + y) * Math.sin(Math.PI / 6) - z
+      };
+    }
+
+    // Interactive Camera Easing Parameters
+    let camera = { x: window.innerWidth / 2, y: window.innerHeight / 2 - 50, zoom: 1.0 };
+    let targetCamera = { x: window.innerWidth / 2, y: window.innerHeight / 2 - 50, zoom: 1.0 };
+
+    // Building Floors (5 levels matching key departments)
+    const FLOORS = [
+      { id: 'zeze_prompt', name: 'Kat 10: Zeze Prompt (Komuta)', z: 200, color: '#00f2fe', hover: false },
+      { id: 'zeze_sec', name: 'Kat 8: Zeze Sec & Guard (Kalkan)', z: 150, color: '#ff007f', hover: false },
+      { id: 'zeze_rnd', name: 'Kat 6: Zeze Rnd (Gözlem)', z: 100, color: '#2563eb', hover: false },
+      { id: 'zeze_eng', name: 'Kat 4: Zeze Eng (Geliştirme)', z: 50, color: '#f59e0b', hover: false },
+      { id: 'crypto_trading', name: 'Kat 2: Finans & Medya (ROI)', z: 0, color: '#10b981', hover: false }
+    ];
+
+    let selectedFloorId = 'zeze_prompt';
+
+    // Virtual Office Staff (Orbs)
+    const staff = [];
+    for (let i = 0; i < 15; i++) {
+      const floor = FLOORS[Math.floor(Math.random() * FLOORS.length)];
+      staff.push({
+        x: Math.random() * 80 - 40,
+        y: Math.random() * 80 - 40,
+        floor: floor,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        pulse: Math.random() * Math.PI,
+        state: Math.random() > 0.5 ? 'coding' : 'thinking'
+      });
+    }
+
+    // Connect WebSocket to port 8000 for live data streaming
+    let ws = null;
+    function connectWS() {
+      ws = new WebSocket('ws://localhost:8000/ws');
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'state') {
+          // Speed up staff behavior if thinking
+          staff.forEach(s => {
+            if (data.val === 'thinking') {
+              s.vx *= 1.5;
+              s.vy *= 1.5;
+              s.state = 'thinking';
+            } else {
+              s.state = 'coding';
+            }
+          });
+        }
+      };
+      ws.onclose = () => {
+        setTimeout(connectWS, 3000); // Reconnect
+      };
+    }
+    connectWS();
+
+    // Mouse Interaction
+    let mouse = { x: 0, y: 0 };
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      // Find clicked floor
+      let clickedFloor = null;
+      for (let i = FLOORS.length - 1; i >= 0; i--) {
+        const floor = FLOORS[i];
+        
+        // Calculate isometric position of floor center
+        const iso = toIso(0, 0, floor.z);
+        const screenX = camera.x + iso.x * camera.zoom;
+        const screenY = camera.y + iso.y * camera.zoom;
+        
+        // Simple bounding box checks for isometric rhombuses
+        const dx = Math.abs(mouse.x - screenX);
+        const dy = Math.abs(mouse.y - screenY);
+        
+        if (dx / (100 * camera.zoom) + dy / (50 * camera.zoom) <= 1.0) {
+          clickedFloor = floor;
+          break;
+        }
+      }
+
+      if (clickedFloor) {
+        selectedFloorId = clickedFloor.id;
+        
+        // CEO camera zoom easing targeting the clicked floor
+        const iso = toIso(0, 0, clickedFloor.z);
+        targetCamera.x = window.innerWidth / 2 - iso.x * 1.5;
+        targetCamera.y = window.innerHeight / 2 - iso.y * 1.5;
+        targetCamera.zoom = 1.35;
+        
+        // Post message to Tauri parent container to open React telemetry card
+        if (window.parent) {
+          window.parent.postMessage({ type: 'SELECT_DEPT', deptId: clickedFloor.id }, '*');
+        }
+        
+        // Temporary feedback
+        document.getElementById('hud-overlay').innerText = `🏢 CEO ZOOM ETKİSİ: ${clickedFloor.name} ODAKLANILDI`;
+        setTimeout(() => {
+          document.getElementById('hud-overlay').innerText = `🏢 GODOT 4.X WEBGL ENGINE | 2.5D ISOMETRIC BUILDING ACTIVE`;
+        }, 2000);
+      } else {
+        // Reset zoom
+        targetCamera.x = window.innerWidth / 2;
+        targetCamera.y = window.innerHeight / 2 - 50;
+        targetCamera.zoom = 1.0;
+      }
+    });
+
+    // Render loop
+    function loop() {
+      // Easing camera transitions
+      camera.x += (targetCamera.x - camera.x) * 0.08;
+      camera.y += (targetCamera.y - camera.y) * 0.08;
+      camera.zoom += (targetCamera.zoom - camera.zoom) * 0.08;
+
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+      // Draw Grid base floor (hologram style)
+      ctx.strokeStyle = 'rgba(28, 40, 66, 0.4)';
+      ctx.lineWidth = 1;
+      for (let g = -5; g <= 5; g++) {
+        const p1 = toIso(g * 30, -150, -50);
+        const p2 = toIso(g * 30, 150, -50);
+        ctx.beginPath();
+        ctx.moveTo(camera.x + p1.x * camera.zoom, camera.y + p1.y * camera.zoom);
+        ctx.lineTo(camera.x + p2.x * camera.zoom, camera.y + p2.y * camera.zoom);
+        ctx.stroke();
+
+        const p3 = toIso(-150, g * 30, -50);
+        const p4 = toIso(150, g * 30, -50);
+        ctx.beginPath();
+        ctx.moveTo(camera.x + p3.x * camera.zoom, camera.y + p3.y * camera.zoom);
+        ctx.lineTo(camera.x + p4.x * camera.zoom, camera.y + p4.y * camera.zoom);
+        ctx.stroke();
+      }
+
+      // Draw Building columns / glass walls
+      FLOORS.forEach((floor) => {
+        const isSelected = floor.id === selectedFloorId;
+        
+        // Calculate dynamic hover
+        const iso = toIso(0, 0, floor.z);
+        const screenX = camera.x + iso.x * camera.zoom;
+        const screenY = camera.y + iso.y * camera.zoom;
+        
+        const dx = Math.abs(mouse.x - screenX);
+        const dy = Math.abs(mouse.y - screenY);
+        floor.hover = (dx / (100 * camera.zoom) + dy / (50 * camera.zoom) <= 1.0);
+
+        // Draw isometric slabs
+        ctx.fillStyle = isSelected ? 'rgba(0, 242, 254, 0.15)' : 
+                        floor.hover ? 'rgba(255, 0, 127, 0.1)' : 'rgba(13, 21, 39, 0.7)';
+        ctx.strokeStyle = isSelected ? '#00f2fe' : 
+                          floor.hover ? '#ff007f' : '#1c2842';
+        ctx.lineWidth = isSelected ? 2 : 1;
+
+        // Path of isometric rhombus floor
+        ctx.beginPath();
+        const pt1 = toIso(-80, -80, floor.z);
+        const pt2 = toIso(80, -80, floor.z);
+        const pt3 = toIso(80, 80, floor.z);
+        const pt4 = toIso(-80, 80, floor.z);
+
+        ctx.moveTo(camera.x + pt1.x * camera.zoom, camera.y + pt1.y * camera.zoom);
+        ctx.lineTo(camera.x + pt2.x * camera.zoom, camera.y + pt2.y * camera.zoom);
+        ctx.lineTo(camera.x + pt3.x * camera.zoom, camera.y + pt3.y * camera.zoom);
+        ctx.lineTo(camera.x + pt4.x * camera.zoom, camera.y + pt4.y * camera.zoom);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw floor text
+        ctx.fillStyle = isSelected ? '#00f2fe' : '#64748b';
+        ctx.font = `bold ${Math.max(10, 11 * camera.zoom)}px 'Segoe UI'`;
+        ctx.fillText(floor.name, screenX - 60 * camera.zoom, screenY - 5 * camera.zoom);
+      });
+
+      // Update and Draw Staff / Orbs
+      staff.forEach((s) => {
+        // Move bounds inside isometric box
+        s.x += s.vx;
+        s.y += s.vy;
+        if (Math.abs(s.x) > 60) s.vx *= -1;
+        if (Math.abs(s.y) > 60) s.vy *= -1;
+
+        s.pulse += 0.05;
+        const r = 3 + Math.sin(s.pulse) * 1;
+
+        const iso = toIso(s.x, s.y, s.floor.z + 10);
+        
+        ctx.beginPath();
+        ctx.arc(camera.x + iso.x * camera.zoom, camera.y + iso.y * camera.zoom, r * camera.zoom, 0, Math.PI * 2);
+        
+        // Neon coloring based on state
+        ctx.fillStyle = s.state === 'thinking' ? '#00f2fe' : '#10b981';
+        ctx.shadowColor = s.state === 'thinking' ? '#00f2fe' : '#10b981';
+        ctx.shadowBlur = 8;
+        ctx.fill();
+        
+        // Reset shadows to avoid performance degradation
+        ctx.shadowBlur = 0;
+      });
+
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>
