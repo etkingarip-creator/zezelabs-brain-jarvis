@@ -1,25 +1,113 @@
-name: Release Build
+name: ZEZE-HQ Release Build
+
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
 
 jobs:
-  release:
+  # ── Python tests ────────────────────────────────────────
+  test:
+    name: Python Tests
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Install Rust
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run plugin system tests
+        run: python -m pytest tests/test_war_room_endpoints.py::TestPluginSystem -q
+
+      - name: Run desktop syntax test
+        run: python -m pytest tests/test_war_room_endpoints.py::TestDesktopModule -q
+
+  # ── Tauri Desktop Build ─────────────────────────────────
+  build-tauri:
+    name: Tauri Desktop Build
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
-        
-      - name: Install Node
+
+      - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          
-      - name: Install dependencies & Build
+          cache: 'npm'
+          cache-dependency-path: jarvis-client/package-lock.json
+
+      - name: Install Node dependencies
         run: |
           cd jarvis-client
-          npm install
+          npm ci
+
+      - name: Build Tauri application
+        run: |
+          cd jarvis-client
           npm run tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zezelabs-jarvis-windows
+          path: |
+            jarvis-client/src-tauri/target/release/bundle/nsis/*.exe
+            jarvis-client/src-tauri/target/release/bundle/msi/*.msi
+          retention-days: 30
+
+  # ── GitHub Release ──────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-tauri
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: zezelabs-jarvis-windows
+          path: dist/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "ZEZELABS JARVIS ${{ github.ref_name }}"
+          body: |
+            ## 🏛️ ZEZELABS SİBER KARARGAH ${{ github.ref_name }}
+            
+            ### Yenilikler
+            - İzometrik HQ binası (PySide6)
+            - Neural Network 3D canvas (Tauri + React)
+            - Plugin sistemi v2.0
+            - Canlı telemetri paneli
+            - FastAPI backend
+            
+            ### Kurulum
+            1. `.exe` dosyasını indirin
+            2. Çift tıklayın ve kurun
+            3. Masaüstündeki `ZEZELABS JARVIS` simgesine tıklayın
+          files: dist/**
+          draft: false
+          prerelease: false
