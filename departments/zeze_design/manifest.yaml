@@ -1,0 +1,10 @@
+name: zeze_design
+role: hesaplamali_estetik
+allowed_tools:
+  - visual_generation
+  - parametric_design
+  - layout_composition
+  - n8n_integration
+forbidden_tools:
+  - live_trade
+priority: high

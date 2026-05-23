@@ -22,6 +22,7 @@ MODULES = [
     "departments.crypto_trading.agent",
     "departments.zeze_aro.agent",
     "departments.media_factory.agent",
+    "departments.zeze_design.agent",
     "live_matrix.backend.zeze_guard_provider",
     "live_matrix.backend.api"
 ]
