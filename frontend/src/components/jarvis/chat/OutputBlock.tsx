@@ -40,6 +40,18 @@ export default function OutputBlock({
       if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return; }
       const u = new SpeechSynthesisUtterance(message.text);
       u.lang = 'tr-TR';
+      // Ayarlardaki ses tercihini gerçekten uygula (zom_settings_voice_gender)
+      const gender = localStorage.getItem('zom_settings_voice_gender') || 'robot';
+      if (gender === 'robot') {
+        u.pitch = 0.4; u.rate = 0.95;
+      } else {
+        const trVoices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith('tr'));
+        const pick = trVoices.find(v =>
+          gender === 'female' ? /female|kad|woman/i.test(v.name) : /male|erkek|man/i.test(v.name)
+        ) || trVoices[0];
+        if (pick) u.voice = pick;
+        u.pitch = gender === 'female' ? 1.25 : 0.85;
+      }
       u.onend = () => setSpeaking(false);
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(u);

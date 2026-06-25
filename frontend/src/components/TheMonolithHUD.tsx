@@ -26,7 +26,9 @@ export default function TheMonolithHUD() {
       } catch { /* offline — telemetry null kalır, HUD '—' gösterir */ }
     };
     fetchTelemetry();
-    const iv = setInterval(fetchTelemetry, 5000);
+    // Ayarlardan okunan gerçek telemetri sıklığı (zom_settings_telemetry_delay, saniye)
+    const delayMs = (parseInt(localStorage.getItem('zom_settings_telemetry_delay') || '5', 10) || 5) * 1000;
+    const iv = setInterval(fetchTelemetry, delayMs);
     return () => { alive = false; clearInterval(iv); };
   }, []);
 

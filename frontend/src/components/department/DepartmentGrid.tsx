@@ -58,7 +58,9 @@ export default function DepartmentGrid({ departments, onSelect, selectedId, onQu
       } catch { /* offline → null → '—' */ }
     };
     fetchTel();
-    const iv = setInterval(fetchTel, 5000);
+    // Ayarlardan okunan gerçek telemetri sıklığı (zom_settings_telemetry_delay, saniye)
+    const delayMs = (parseInt(localStorage.getItem('zom_settings_telemetry_delay') || '5', 10) || 5) * 1000;
+    const iv = setInterval(fetchTel, delayMs);
     return () => { alive = false; clearInterval(iv); };
   }, []);
 
