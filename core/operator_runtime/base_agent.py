@@ -157,6 +157,68 @@ class BaseDepartmentAgent:
             self.logger.error(f"Failed to delegate task to {target_department}: {e}")
             return {"success": False, "error": str(e)}
 
+    # ── Görev-tipi kapsama altyapısı (eksiksiz yürütme) ─────────────────
+    async def dispatch_by_task_type(
+        self,
+        task_data: Dict[str, Any],
+        routes: list,
+        default_system_prompt: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Görev tipini sınıflandırıp ilgili uzman handler'a yönlendirir.
+
+        routes: [(keywords:list[str], handler:async callable), ...]
+        Tanınmayan tip → _standard_execute + coverage_miss=True (kör nokta görünür).
+        """
+        description = (task_data.get("description") or "")
+        dl = description.lower()
+        explicit = (task_data.get("task_type") or "").lower()
+
+        # 1) Açık task_type eşleşmesi
+        if explicit:
+            for keywords, handler in routes:
+                if explicit in [k.lower() for k in keywords]:
+                    return await handler(task_data)
+        # 2) Açıklama içi keyword eşleşmesi
+        for keywords, handler in routes:
+            if any(k in dl for k in keywords):
+                return await handler(task_data)
+
+        # 3) Kör nokta: tanınmayan görev tipi → generic, ama needs_review işaretle
+        self.logger.warning(
+            f"[Coverage] {self.department}: tanınmayan görev tipi → generic fallback. needs_review."
+        )
+        res = await self._standard_execute(
+            task_data, default_system_prompt or f"Sen ZezeLabs {self.department} ajanısın."
+        )
+        res["coverage_miss"] = True
+        res["deliverable"] = False
+        try:
+            self.alerts.send_alert(
+                title=f"Kapsama Açığı: {self.department}",
+                message=f"Tanınmayan görev tipi generic'e düştü: {description[:120]}",
+                severity="warning",
+            )
+        except Exception:
+            pass
+        return res
+
+    def _validate_artifact(self, path: str) -> bool:
+        """Artefakt doğrulama (kalite kapısı): var mı + JSON/Python geçerli mi."""
+        if not path or not os.path.exists(path):
+            return False
+        try:
+            if path.endswith(".json"):
+                import json as _j
+                with open(path, "r", encoding="utf-8") as f:
+                    _j.load(f)
+            elif path.endswith(".py"):
+                with open(path, "r", encoding="utf-8") as f:
+                    compile(f.read(), path, "exec")
+        except Exception as e:
+            self.logger.warning(f"[Validate] Artefakt geçersiz {path}: {e}")
+            return False
+        return True
+
     # ── Standard contract ───────────────────────────────────────────────
     async def run_cycle(self) -> Dict[str, Any]:
         """Periodic self-execution. Default = noop."""

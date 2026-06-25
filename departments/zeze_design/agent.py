@@ -190,10 +190,13 @@ class ZezeDesignAgent(BaseDepartmentAgent):
         # Trace'i Kapat
         trace.finish(status="success")
         
+        valid = self._validate_artifact(report_path)
         return {
             "success": True,
             "report_path": report_path,
             "task_id": task_id,
             "trace_id": trace.trace_id,
-            "output": llm_response
+            "output": llm_response,
+            "artifacts": [report_path],
+            "deliverable": valid,
         }

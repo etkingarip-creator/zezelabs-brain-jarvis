@@ -20,42 +20,71 @@ class AppFactoryAgent(BaseDepartmentAgent):
         self.workspace_root = os.path.realpath(os.path.abspath(workspace_root))
     
     async def execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-        description = task_data.get("description", "") or ""
-        desc_lower = description.lower()
-
-        # Scaffold/build niyeti tespit edilirse GERÇEK fabrikayı çalıştır (run_dry_task),
-        # aksi halde konsept/spesifikasyon için standart LLM akışını kullan.
-        scaffold_keywords = [
-            "uygulama yap", "uygulama oluştur", "app yap", "scaffold", "iskelet",
-            "proje oluştur", "kod üret", "mvp", "fastapi", "react", "web uygulama",
-            "saas", "api oluştur", "build app", "create app", "generate app"
+        # Görev-tipi kapsama: scaffold | spec/feature | aksi → generic (needs_review)
+        routes = [
+            (["scaffold", "iskelet", "uygulama yap", "uygulama oluştur", "app yap",
+              "proje oluştur", "kod üret", "mvp", "fastapi", "react", "web uygulama",
+              "saas", "api oluştur", "build app", "create app", "generate app"],
+             self._handle_scaffold),
+            (["spec", "spesifikasyon", "feature", "özellik listesi", "user flow",
+              "kullanıcı akış", "teknik doküman", "gereksinim", "requirement"],
+             self._handle_spec),
         ]
-        if any(kw in desc_lower for kw in scaffold_keywords):
-            self.logger.info(f"[app_factory] Scaffold niyeti tespit edildi → run_dry_task çalıştırılıyor.")
-            task_id = self._safe_task_id(task_data)
-            agent_result = await self.run_dry_task(goal=description, task_id=task_id)
-            # AgentResult → standart dict envelope (artefakt yolları MUTLAK olmalı)
-            scaffold_dir = os.path.join(self.workspace_root, "app_factory", "scaffolds", task_id)
-            files_written = [
-                os.path.join(scaffold_dir, tr.get("relative"))
-                for tr in (agent_result.tool_results or [])
-            ]
-            output = (
-                f"# App Factory — Scaffold Tamamlandı\n\n"
-                f"**Hedef:** {description}\n\n"
-                f"**Üretilen Dosyalar ({len(files_written)}):**\n"
-                + "\n".join(f"- `{f}`" for f in files_written)
-            )
-            return {
-                "success": agent_result.success,
-                "task_id": task_id,
-                "output": output,
-                "artifacts": files_written,
-                "deliverable": True,
-            }
+        default_sp = "Sen ZezeLabs Uygulama Fabrikası ajanısın. Uygulama konseptleri, user flow şemaları, MVP feature listeleri ve teknik spec üretirsin."
+        return await self.dispatch_by_task_type(task_data, routes, default_sp)
 
-        system_prompt = "Sen ZezeLabs Uygulama Fabrikası (App Factory) ajanısın. Mobil ve web uygulama konseptleri, kullanıcı akışı (user flow) şemaları, MVP feature listeleri ve teknik spesifikasyon belgeleri üretirsin. Hızlı prototipleme önceliğindir."
-        return await self._standard_execute(task_data, system_prompt)
+    async def _handle_scaffold(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        description = task_data.get("description", "") or ""
+        self.logger.info("[app_factory] Scaffold handler → run_dry_task.")
+        task_id = self._safe_task_id(task_data)
+        agent_result = await self.run_dry_task(goal=description, task_id=task_id)
+        scaffold_dir = os.path.join(self.workspace_root, "app_factory", "scaffolds", task_id)
+        files_written = [
+            os.path.join(scaffold_dir, tr.get("relative"))
+            for tr in (agent_result.tool_results or [])
+        ]
+        valid = all(self._validate_artifact(f) for f in files_written) if files_written else False
+        output = (
+            f"# App Factory — Scaffold Tamamlandı\n\n**Hedef:** {description}\n\n"
+            f"**Üretilen Dosyalar ({len(files_written)}):**\n"
+            + "\n".join(f"- `{f}`" for f in files_written)
+        )
+        return {
+            "success": agent_result.success and valid,
+            "task_id": task_id, "output": output,
+            "artifacts": files_written, "deliverable": valid,
+        }
+
+    async def _handle_spec(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        import re
+        description = task_data.get("description", "") or ""
+        task_id = self._safe_task_id(task_data)
+        prompt = (
+            f"GÖREV: {description}\n\nBir ürün mimarı olarak yapılandırılmış teknik spesifikasyon üret.\n"
+            f"SADECE şu JSON: {{\"app_name\":\"\",\"features\":[\"f1\"],\"user_flows\":[\"adım1\"],"
+            f"\"tech_stack\":[\"\"],\"mvp_scope\":[\"\"],\"apis\":[{{\"endpoint\":\"\",\"method\":\"\"}}]}}"
+        )
+        resp = await self.ask_llm(prompt, system_prompt="Sen ZezeLabs ürün mimarısın. Uygulanabilir teknik spec üretirsin.")
+        spec = {}
+        try:
+            m = re.search(r'\{.*\}', resp, re.DOTALL)
+            if m: spec = json.loads(m.group(0))
+        except Exception:
+            spec = {"app_name": "N/A", "features": [resp[:200]]}
+        report_dir = os.path.join(self.workspace_root, "departments", self.department, "reports", task_id)
+        os.makedirs(report_dir, exist_ok=True)
+        path = os.path.join(report_dir, "app_spec.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(spec, f, indent=2, ensure_ascii=False)
+        valid = self._validate_artifact(path)
+        output = (
+            f"# Teknik Spesifikasyon: {spec.get('app_name','N/A')}\n"
+            f"- **Özellikler:** {', '.join(str(x) for x in spec.get('features', []))}\n"
+            f"- **Tech Stack:** {', '.join(str(x) for x in spec.get('tech_stack', []))}\n"
+            f"- **MVP:** {', '.join(str(x) for x in spec.get('mvp_scope', []))}"
+        )
+        return {"success": valid, "task_id": task_id, "output": output,
+                "artifacts": [path], "deliverable": valid}
 
     async def run_dry_task(self, goal: str, task_id: Optional[str] = None) -> AgentResult:
         """

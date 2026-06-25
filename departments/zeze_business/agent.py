@@ -19,6 +19,16 @@ class ZezeBusinessAgent(BaseDepartmentAgent):
         self.workspace_root = os.path.realpath(os.path.abspath(workspace_root))
 
     async def execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        # Görev-tipi kapsama: pazar/rakip analizi | aksi → generic (needs_review)
+        routes = [
+            (["pazar", "market", "tam", "sam", "rakip", "competitor", "iş modeli",
+              "business model", "strateji", "gelir", "revenue", "büyüme", "growth"],
+             self._handle_market_analysis),
+        ]
+        default_sp = "Sen ZezeLabs İş Geliştirme ajanısın. Pazar analizi, B2B ortaklık, satış stratejisi üretirsin."
+        return await self.dispatch_by_task_type(task_data, routes, default_sp)
+
+    async def _handle_market_analysis(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         task_id = self._safe_task_id(task_data)
         description = task_data.get("description", "") or ""
 

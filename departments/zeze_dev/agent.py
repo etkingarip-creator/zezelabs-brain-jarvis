@@ -43,9 +43,7 @@ class ZezeDevAgent(BaseDepartmentAgent):
         return {k: v for k, v in files.items() if isinstance(v, str)}
 
     async def execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-        task_id = self._safe_task_id(task_data)
-
-        # Self-heal modu: standart akışta kalsın (debug/onarım metni)
+        # Self-heal modu (en üstte)
         if task_data.get("action") == "self_heal":
             description = (
                 f"SELF HEAL/DEBUG TASK:\n"
@@ -56,6 +54,52 @@ class ZezeDevAgent(BaseDepartmentAgent):
             system_prompt = "Sen ZezeLabs Yazılım Geliştirme (Dev) ajanısın. Hata ayıklar, kodu file_writer ile onarırsın."
             return await self._standard_execute(task_data, system_prompt, description)
 
+        # Görev-tipi kapsama: kod üretimi | code review | aksi → generic
+        routes = [
+            (["kod yaz", "fonksiyon", "implement", "uygula", "geliştir", "yaz ve test",
+              "fix", "feature", "endpoint", "class", "modül", "build", "code", "script"],
+             self._handle_codegen),
+            (["review", "incele", "denetle", "refactor", "kod kalite", "code review", "audit kod"],
+             self._handle_review),
+        ]
+        default_sp = "Sen ZezeLabs Yazılım Geliştirme ajanısın. Mimari planlar, kod standartları belirlersin."
+        return await self.dispatch_by_task_type(task_data, routes, default_sp)
+
+    async def _handle_review(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Code review handler: yapılandırılmış inceleme raporu üretir."""
+        import re
+        description = task_data.get("description", "") or ""
+        task_id = self._safe_task_id(task_data)
+        prompt = (
+            f"GÖREV: {description}\n\nKıdemli mühendis olarak kod incelemesi yap.\n"
+            f"SADECE JSON: {{\"issues\":[{{\"severity\":\"high/medium/low\",\"desc\":\"\",\"fix\":\"\"}}],"
+            f"\"score\":0-100,\"summary\":\"\"}}"
+        )
+        resp = await self.ask_llm(prompt, system_prompt="Sen ZezeLabs kod inceleme uzmanısın. SOLID, güvenlik, performans denetlersin.")
+        review = {}
+        try:
+            m = re.search(r'\{.*\}', resp, re.DOTALL)
+            if m: review = json.loads(m.group(0))
+        except Exception:
+            review = {"summary": resp[:200], "issues": []}
+        report_dir = os.path.join(self.workspace_root, self.department, "reviews", task_id) \
+            if False else os.path.join(self.workspace_root, "departments", self.department, "reports", task_id)
+        os.makedirs(report_dir, exist_ok=True)
+        path = os.path.join(report_dir, "code_review.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(review, f, indent=2, ensure_ascii=False)
+        valid = self._validate_artifact(path)
+        issues = review.get("issues", [])
+        output = (
+            f"# Kod İnceleme Raporu (Skor: {review.get('score','N/A')}/100)\n\n"
+            + "\n".join(f"- [{i.get('severity','?')}] {i.get('desc','?')}" for i in issues if isinstance(i, dict))
+            + f"\n\n{review.get('summary','')}"
+        )
+        return {"success": valid, "task_id": task_id, "output": output,
+                "artifacts": [path], "deliverable": valid}
+
+    async def _handle_codegen(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        task_id = self._safe_task_id(task_data)
         description = task_data.get("description", "") or ""
 
         # GERÇEK MÜHENDİSLİK PIPELINE'ı
