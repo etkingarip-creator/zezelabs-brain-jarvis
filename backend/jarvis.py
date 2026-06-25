@@ -658,6 +658,35 @@ class JarvisZOMCore:
                 "departments": dept_info,
             }
 
+        @self.app.get("/api/telemetry/live")
+        async def telemetry_live():
+            """HUD için GERÇEK canlı telemetri — traces (critic/sorgu/RAG) + guard_costs (token).
+            Veri yoksa null döner; HUD bunu '—' olarak gösterir (uydurma yok)."""
+            from core.observability.tracer import get_global_trace_telemetry
+            t = get_global_trace_telemetry()
+
+            total_tokens = 0
+            total_cost = 0.0
+            try:
+                from core.zeze_guard.roi_tracker import ROITracker
+                costs = getattr(ROITracker().storage, "costs", []) or []
+                total_tokens = sum((c.get("tokens_in", 0) + c.get("tokens_out", 0)) for c in costs)
+                total_cost = sum(c.get("estimated_cost_usd", 0.0) for c in costs)
+            except Exception as _te:
+                logger.debug(f"telemetry token aggregation skipped: {_te}")
+
+            tasks = self.task_history or []
+            return {
+                "critic_score": t.get("avg_critic_score"),
+                "query_ms": t.get("avg_query_ms"),
+                "rag_hits": t.get("avg_rag_hits"),
+                "total_traces": t.get("total_traces", 0),
+                "total_tokens": total_tokens,
+                "total_cost_usd": round(total_cost, 4),
+                "active_tasks": sum(1 for x in tasks if x.get("status") == "queued"),
+                "completed_tasks": sum(1 for x in tasks if x.get("status") == "success"),
+            }
+
         @self.app.get("/api/departments")
         async def get_departments():
             """Tüm departmanları listele"""

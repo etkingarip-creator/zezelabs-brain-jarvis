@@ -177,6 +177,28 @@ def get_recent_traces(limit: int = 20) -> list:
         return []
 
 
+def get_global_trace_telemetry() -> dict:
+    """Tüm trace'ler üzerinden global GERÇEK telemetri: ort. critic skoru,
+    sorgu süresi (duration_ms), RAG eşleşmesi. Veri yoksa None döner (uydurma yok)."""
+    try:
+        cur = _conn.execute("""
+            SELECT COUNT(*) as total,
+                   AVG(critic_score) as avg_critic,
+                   AVG(duration_ms) as avg_duration_ms,
+                   AVG(rag_hits) as avg_rag_hits
+            FROM traces
+        """)
+        row = cur.fetchone()
+        return {
+            "total_traces": row[0] or 0,
+            "avg_critic_score": round(row[1]) if row[1] is not None else None,
+            "avg_query_ms": round(row[2]) if row[2] is not None else None,
+            "avg_rag_hits": round(row[3]) if row[3] is not None else None,
+        }
+    except Exception as e:
+        return {"error": str(e), "total_traces": 0}
+
+
 def get_department_stats() -> dict:
     """Her departman için ortalama süre ve Critic puanını döndürür."""
     try:

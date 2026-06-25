@@ -3,6 +3,7 @@ import { useJarvisConnection } from '../hooks/useJarvisConnection';
 import { useDepartments } from '../hooks/useDepartments';
 import { useJarvisStore } from '../stores';
 import { FLOOR_CATALOG } from '../data/floors';
+import { API_BASE } from '../lib/config';
 
 export default function TheMonolithHUD() {
   const jarvis = useJarvisConnection();
@@ -11,10 +12,27 @@ export default function TheMonolithHUD() {
   const [input, setInput] = useState('');
   const [expandedFloor, setExpandedFloor] = useState<number | null>(null);
 
+  // GERÇEK canlı telemetri (/api/telemetry/live) — 5sn'de bir, kaynak yoksa null → '—'
+  const [telemetry, setTelemetry] = useState<{
+    critic_score: number | null; query_ms: number | null; rag_hits: number | null;
+    total_tokens: number; total_traces: number;
+  } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const fetchTelemetry = async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/telemetry/live`);
+        if (r.ok && alive) setTelemetry(await r.json());
+      } catch { /* offline — telemetry null kalır, HUD '—' gösterir */ }
+    };
+    fetchTelemetry();
+    const iv = setInterval(fetchTelemetry, 5000);
+    return () => { alive = false; clearInterval(iv); };
+  }, []);
+
   // Critic Agent durum metni — GERÇEK jarvis.state geçişlerine tepki verir.
   // Skor değeri için gerçek bir telemetri kaynağı bağlanana kadar dürüstçe '—' gösterilir
   // (uydurma random skor YOK). Backend per-task critic skoru beslendiğinde criticScore set edilecek.
-  const [criticScore, setCriticScore] = useState<number | '—'>('—');
   const [criticStatusText, setCriticStatusText] = useState('Görev bekleniyor.');
   const [criticBadgeText, setCriticBadgeText] = useState<string | null>(null);
   const [criticBadgeType, setCriticBadgeType] = useState<'ok' | 'warn' | null>(null);
@@ -62,8 +80,10 @@ export default function TheMonolithHUD() {
   const activeTasksCount = jarvis.tasks?.filter(t => t.status === 'running' || t.status === 'pending').length ?? 0;
   const completedTasksCount = jarvis.tasks?.filter(t => t.status === 'completed').length ?? 0;
   
-  // Ort. critic skoru: gerçek kaynak bağlanana kadar dürüstçe '—' (sahte sabit yok)
-  const averageCriticScore: number | string = '—';
+  // GERÇEK ort. critic skoru (traces.db'den, /api/telemetry/live); yoksa '—'
+  const realCritic = telemetry && typeof telemetry.critic_score === 'number' ? telemetry.critic_score : null;
+  const displayCritic: number | string = realCritic ?? '—';
+  const averageCriticScore: number | string = displayCritic;
 
   // Last user input display inside Brain panel
   const lastUserMsg = jarvis.messages
@@ -78,8 +98,8 @@ export default function TheMonolithHUD() {
   // SVG Concentric circle properties
   const CIRCLE_RADIUS = 32;
   const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS; // ~201.06
-  const gaugeOffset = typeof criticScore === 'number'
-    ? CIRCLE_CIRCUMFERENCE - (CIRCLE_CIRCUMFERENCE * criticScore) / 100
+  const gaugeOffset = typeof displayCritic === 'number'
+    ? CIRCLE_CIRCUMFERENCE - (CIRCLE_CIRCUMFERENCE * displayCritic) / 100
     : CIRCLE_CIRCUMFERENCE;
 
   return (
@@ -444,11 +464,13 @@ export default function TheMonolithHUD() {
             {isLive ? 'Çekirdek aktif — 17 departman çevrimiçi' : 'Bağlantı kesildi — Çevrimdışı mod'}
           </div>
           <div className="token-usage">
-            <span className="token-label mono">AKTİF GÖREV</span>
+            <span className="token-label mono">TOKEN KULLANIMI</span>
             <div className="token-bar">
-              <div className="token-fill" style={{ width: `${Math.min(100, activeTasksCount * 20)}%` }}></div>
+              <div className="token-fill" style={{ width: `${Math.min(100, (telemetry?.total_tokens || 0) / 1000)}%` }}></div>
             </div>
-            <span className="token-val mono">{activeTasksCount} çalışıyor</span>
+            <span className="token-val mono">
+              {telemetry ? `${((telemetry.total_tokens || 0) / 1000).toFixed(1)}K` : '—'}
+            </span>
           </div>
         </header>
 
@@ -621,11 +643,11 @@ export default function TheMonolithHUD() {
                       strokeDasharray={CIRCLE_CIRCUMFERENCE} 
                       strokeDashoffset={gaugeOffset}
                       style={{
-                        stroke: typeof criticScore === 'number' && criticScore >= 70 ? '#4ade80' : '#fbbf24'
+                        stroke: typeof displayCritic === 'number' && displayCritic >= 70 ? '#4ade80' : '#fbbf24'
                       }}
                     ></circle>
                   </svg>
-                  <div className="gauge-score">{criticScore}</div>
+                  <div className="gauge-score">{displayCritic}</div>
                 </div>
                 <div className="critic-status">
                   <div>{criticStatusText}</div>
@@ -642,12 +664,12 @@ export default function TheMonolithHUD() {
               <h3>Bellek Katmanı (SQLite FTS5)</h3>
               <div className="memory-stats">
                 <div>
-                  <span>{completedTasksCount || '—'}</span>
-                  <label>işlenen görev</label>
+                  <span>{telemetry?.query_ms ? `${telemetry.query_ms}ms` : '—'}</span>
+                  <label>ort. görev süresi</label>
                 </div>
                 <div>
-                  <span>{jarvis.messages.length || '—'}</span>
-                  <label>oturum kaydı</label>
+                  <span>{telemetry?.rag_hits ?? '—'}</span>
+                  <label>RAG eşleşmesi</label>
                 </div>
               </div>
             </div>
