@@ -69,13 +69,14 @@ class ZezeAroAgent(BaseDepartmentAgent):
         }
         
         # 5. Ask LLM to generate response or fallback to mock
-        max_retries = 3
+        # Ağır dept: tool-loop (5 döngü) × çoklu retry timeout yapıyordu → plain ask_llm + tek geçiş
+        max_retries = 1
         llm_response = ""
         current_description = goal
-        
+
         for attempt in range(max_retries):
             try:
-                llm_response = await self.ask_llm_with_tools(prompt=current_description, system_prompt=system_prompt)
+                llm_response = await self.ask_llm(prompt=current_description, system_prompt=system_prompt)
             except Exception as e:
                 self.logger.warning(f"LLM call failed: {e}. Using fallback mock response.")
                 llm_response = f"# {task_type.capitalize()} Content\nGenerated ARO analysis for: {goal}\nStatus: Fallback Success."
@@ -174,25 +175,31 @@ class ZezeAroAgent(BaseDepartmentAgent):
             internal_type = "crm"
             
         agent_res = await self._execute_task_internal(description, internal_type, task_id)
-        
+        # _execute_task_internal artık dict döndürüyor (AgentResult değil) — dict erişimi
+        res_success = agent_res.get("success", False)
+        res_output = agent_res.get("output", "") or ""
+        res_files = agent_res.get("artifacts") or []
+
         report_path = os.path.join(self.workspace_root, "departments", self.department, "reports", task_id, "report.json")
         report_data = {
             "task_id": task_id,
             "department": self.department,
             "timestamp": datetime.now().isoformat(),
             "query": description,
-            "output": agent_res.output,
-            "status": "completed" if agent_res.success else "failed",
-            "files_created": agent_res.tool_results[0]["files_created"] if agent_res.success else []
+            "output": res_output,
+            "status": "completed" if res_success else "failed",
+            "files_created": res_files,
         }
-        
+
         os.makedirs(os.path.dirname(report_path), exist_ok=True)
         with open(report_path, "w", encoding="utf-8") as f:
             json.dump(report_data, f, indent=2, ensure_ascii=False)
-            
+
         return {
-            "success": agent_res.success,
+            "success": res_success,
             "report_path": report_path,
             "task_id": task_id,
-            "output": agent_res.output
+            "output": res_output,
+            "artifacts": [report_path] + res_files,
+            "deliverable": bool(res_success and len(res_output.strip()) >= 40),
         }
