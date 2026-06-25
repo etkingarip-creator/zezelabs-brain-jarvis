@@ -12,7 +12,7 @@ export interface ModelDef {
 export const AVAILABLE_MODELS: ModelDef[] = [
   {
     id: 'antigravity',
-    label: 'Antigravity (Otonom Yönlendirme)',
+    label: 'Otomatik (Akıllı Yönlendirme)',
     description: 'Karmaşıklık skoruna göre GLM-5.2 veya OpenRouter free arasında dinamik, bütçe dostu yönlendirme.',
     provider: 'cloud',
   },
