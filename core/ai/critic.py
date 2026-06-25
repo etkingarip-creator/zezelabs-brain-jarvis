@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from pydantic import BaseModel, Field, field_validator
 from core.ai.llm_client import LLMClient
 
@@ -20,9 +21,17 @@ class CriticOutput(BaseModel):
 
 
 class CriticAgent:
-    """Otonom Eleştirmen Ajan (Self-Correction Modülü)"""
+    """Otonom Eleştirmen Ajan (Self-Correction Modülü).
+
+    R3 — Yapısal ayrım: Verifier (Critic), implementor'dan FARKLI bir modele
+    sabitlenir. Aksi halde aynı karmaşıklık-yönlendirmesiyle çıktıyı üreten
+    modelle aynı model onaylar → korelasyonlu hata (kötü çıktıyı kötü Critic geçirir).
+    CRITIC_MODEL env ile ayarlanır; üretimde implementor'dan farklı güçlü bir
+    model önerilir (örn. anthropic/claude-3-5-sonnet). Varsayılan: openrouter/free.
+    """
     def __init__(self):
         self.llm = LLMClient()
+        self.critic_model = os.getenv("CRITIC_MODEL", "openrouter/free")
 
     async def evaluate_result(self, department: str, task: str, result: str) -> dict:
         """
@@ -68,7 +77,11 @@ SADECE VE SADECE aşağıdaki formatta GEÇERLİ JSON dön. Başka hiçbir metin
         repair_prompt = prompt
         for attempt in range(3):
             try:
-                response = await self.llm.generate(prompt=repair_prompt, system_prompt=system_prompt)
+                # Ayrı verifier modeli + bypass_antigravity (implementor modeline yeniden yönlenme)
+                response = await self.llm.generate(
+                    prompt=repair_prompt, system_prompt=system_prompt,
+                    model=self.critic_model, bypass_antigravity=True,
+                )
                 
                 # JSON temizle (markdown kod bloklarını kaldır)
                 response_clean = response.strip()
