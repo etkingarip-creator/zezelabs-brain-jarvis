@@ -9,18 +9,28 @@ def select_model_for_task(task_description: str, department: Optional[str] = Non
     Score > 0.7: Zenmux (GLM-5.2)
     Score < 0.7: OpenRouter (Fast/Free Tier)
     """
+    primary = os.getenv("ZOM_PRIMARY_PROVIDER", "").lower()
+
+    # Birincil sağlayıcı yerel Ollama ise ÖLÜ bulut şelalesini (OpenRouter/Z.ai/Gemini)
+    # tamamen atla, doğrudan departmanın yerel modeline git → görevler hızlanır.
+    # (Tespit: hem OpenRouter hem Z.ai bakiyesi sıfır; tek çalışan yol Ollama.)
+    if primary == "ollama":
+        from core.ai.llm_client import get_local_model_for_department
+        return get_local_model_for_department(department)
+
     from core.ai.task_tagger import task_tagger
     tag = task_tagger.tag_task(task_description)
     score = tag["complexity_score"]
     if score > 0.7:
         return "glm-5.2"
-    else:
-        # Basit görev → free zincirin ilk SAĞLIKLI modeli (cooldown'dakiler atlanır).
-        try:
-            from core.ai.llm_client import LLMClient
-            return LLMClient.next_free_model()
-        except Exception:
-            return os.getenv("GEMMA_MODEL_FAST", "openrouter/free")
+    if primary == "zai":
+        return "glm-5.2"
+    # Aksi halde basit görev → free zincirin ilk SAĞLIKLI modeli
+    try:
+        from core.ai.llm_client import LLMClient
+        return LLMClient.next_free_model()
+    except Exception:
+        return os.getenv("GEMMA_MODEL_FAST", "openrouter/free")
 
 
 def model_switcher(department: str, provider: Optional[str] = None) -> str:
