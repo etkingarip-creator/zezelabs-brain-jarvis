@@ -1,17 +1,57 @@
-pika
+# Zezelabs Brain - Python Dependencies (v3 - Security Hardened)
+# ─────────────────────────────────────────────────────
+# REMOVED: pika (RabbitMQ - decommissioned, ZOM_ENABLE_RABBITMQ=false varsayılan)
+# REMOVED: redis (replaced by SQLite FTS5)
+# REMOVED: google-generativeai (using OpenRouter only)
+# ADDED: rich (for observability tracing output)
+
+# Core
 psutil
-streamlit
-streamlit-echarts
 requests
-redis
-pylint
-flake8
-duckduckgo-search
-python-telegram-bot>=21.0
 gitpython
-mcp
-tiktoken
-google-generativeai
-flask
-PySide6>=6.5.0
 websockets
+
+# AI/ML
+tiktoken
+aiohttp>=3.9.0
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Auth & Security
+python-jose[cryptography]
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+
+# UI
+PySide6>=6.5.0
+
+# Observability & Utilities
+rich>=13.0.0
+
+# Telegram Bot
+python-telegram-bot>=21.0
+
+# Search
+duckduckgo-search>=4.0.0
+
+# MCP (Model Context Protocol)
+mcp>=1.0.0
+
+# Headroom AI - Context compression & token management
+headroom-ai>=0.27.0
+
+# YouTube Scraping & Metadata
+yt-dlp>=2025.1.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+vectorbt==0.25.5
+
+# NOTE: pika (RabbitMQ client) is intentionally NOT included.
+# If you re-enable RabbitMQ (ZOM_ENABLE_RABBITMQ=true), add: pika>=1.3.2
