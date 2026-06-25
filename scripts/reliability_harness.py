@@ -23,6 +23,13 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# .env yükle (ZOM_PRIMARY_PROVIDER vb. routing ayarları için)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"), override=True)
+except Exception:
+    pass
+
 # (department_id, AgentClass module path, class name, örnek görev)
 CASES = [
     ("zeze_ops",        "departments.zeze_ops.agent",        "ZezeOpsAgent",        "Sistem operasyon denetimi ve optimizasyon"),
