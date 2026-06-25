@@ -34,8 +34,12 @@ class AppFactoryAgent(BaseDepartmentAgent):
             self.logger.info(f"[app_factory] Scaffold niyeti tespit edildi → run_dry_task çalıştırılıyor.")
             task_id = self._safe_task_id(task_data)
             agent_result = await self.run_dry_task(goal=description, task_id=task_id)
-            # AgentResult → standart dict envelope
-            files_written = [tr.get("relative") for tr in (agent_result.tool_results or [])]
+            # AgentResult → standart dict envelope (artefakt yolları MUTLAK olmalı)
+            scaffold_dir = os.path.join(self.workspace_root, "app_factory", "scaffolds", task_id)
+            files_written = [
+                os.path.join(scaffold_dir, tr.get("relative"))
+                for tr in (agent_result.tool_results or [])
+            ]
             output = (
                 f"# App Factory — Scaffold Tamamlandı\n\n"
                 f"**Hedef:** {description}\n\n"
