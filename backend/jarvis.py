@@ -2656,22 +2656,22 @@ SADECE GEÇERLİ BİR JSON DÖNDÜR, başka hiçbir metin ekleme.'''
                         }
                         self._schedule_broadcast(start_envelope)
 
+                        # Görev-seviyesi timeout: hiçbir departman kuyruğu süresiz kilitleyemez
+                        # (yavaş model / takılan çağrı / sonsuz döngü → graceful fail + breaker sayar).
+                        _task_timeout = float(os.getenv("ZOM_TASK_TIMEOUT", "240"))
                         if os.getenv("ZOM_USE_LANGGRAPH") == "true":
-                            # Route execution through the LangGraph StateGraph Orchestration Engine
                             from core.orchestration.orchestration_graph import orchestration_graph
                             pipeline = [t_dept]
                             if t_payload.get("context", {}).get("pipeline"):
                                 pipeline = [t_dept] + t_payload["context"]["pipeline"]
-                            
-                            graph_outcome = await orchestration_graph.execute(
-                                description=description,
-                                client_id=c_id,
-                                pipeline=pipeline
+                            graph_outcome = await asyncio.wait_for(
+                                orchestration_graph.execute(description=description, client_id=c_id, pipeline=pipeline),
+                                timeout=_task_timeout,
                             )
                             result = graph_outcome.get("department_outcomes", {}).get(t_dept) or {"success": True, "output": "Graph execution completed"}
                         else:
                             # Graceful legacy fallback path (Eksik 6)
-                            result = await agent.execute_task(t_data)
+                            result = await asyncio.wait_for(agent.execute_task(t_data), timeout=_task_timeout)
                         
                         # Apply Critic review and format output
                         formatted_output = self._format_evidence_report(description, t_dept, result)
