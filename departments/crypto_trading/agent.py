@@ -576,15 +576,24 @@ class CryptoTradingAgent(BaseDepartmentAgent):
                             )
                     except Exception:
                         pass
+                    # P2 tail-risk kill-switch + P4 rejim-adaptif strateji
+                    tail = _q.tail_risk_check(closes, sym)
+                    strat = _q.select_strategy(regime)
+                    tail_line = ""
+                    if tail["halt"]:
+                        tail_line = ("- ⛔ TAIL-RISK DURDURMA: " + "; ".join(tail["reasons"]) +
+                                     " → YENİ POZİSYON AÇMA, mevcut riski azalt.\n")
                     quant_context = (
                         f"\n\n=== GERÇEK QUANT ANLIK-GÖRÜNTÜ ({sym}) ===\n"
                         f"- Güncel fiyat: {price}\n- ATR(14): {atr_v} (volatilite)\n"
                         f"- ADX(14): {adx_v} → Piyasa rejimi: {regime} "
                         f"({'momentum işlemine uygun' if regime=='trend' else 'range — momentum işlemi RİSKLİ' if regime=='range' else 'geçiş'})\n"
+                        f"- Önerilen strateji (rejim-adaptif): {strat['strategy']} — {strat['note']}\n"
                         f"- ATR-tabanlı önerilen stop (long, 2×ATR): {suggested_stop}\n"
-                        f"{funding_line}"
-                        f"Bu gerçek metrikleri kullan. Range rejiminde momentum işlemi önerme. "
-                        f"Stop'u ATR'ye göre belirle, sabit % kullanma. Funding aşırıysa squeeze riskini değerlendir."
+                        f"{funding_line}{tail_line}"
+                        f"Bu gerçek metrikleri kullan. Rejime uygun stratejiyi öner (trend→momentum, range→mean-reversion). "
+                        f"Stop'u ATR'ye göre belirle. Funding aşırıysa squeeze, tail-risk durdurma varsa felaket riskini önceliklendir. "
+                        f"Birden çok kripto önerirken BTC-korelasyonu (beta kümelenmesi) nedeniyle bunların TEK bahis olabileceğini hatırlat."
                     )
         except Exception as _qe:
             self.logger.debug(f"quant snapshot skipped: {_qe}")
@@ -778,7 +787,24 @@ class CryptoTradingAgent(BaseDepartmentAgent):
         from core.config import config
         from core.operator_runtime.policy_engine import PolicyEngine
         policy = PolicyEngine(department=self.department)
-        
+
+        # P2 TAIL-RISK KAPISI: BUY emirlerinde ani çöküş/depeg varsa GERÇEK ENGELLEME
+        # (LUNA senaryosu: çöküşe alım yapmayı durdur). Tüm modlardan önce çalışır.
+        if order_params.get("side", "BUY") == "BUY":
+            try:
+                from departments.crypto_trading import quant_engine as _q
+                _sym = order_params.get("symbol", "BTCUSDT")
+                _kl = await self.get_binance_klines(_sym, "5m", 10)
+                if isinstance(_kl, list) and len(_kl) >= 5:
+                    _closes = [float(k[4]) for k in _kl]
+                    _tail = _q.tail_risk_check(_closes, _sym)
+                    if _tail["halt"]:
+                        self.logger.warning(f"[TAIL-RISK] {_sym} BUY engellendi: {_tail['reasons']}")
+                        return {"error": "TAIL_RISK_HALT", "reasons": _tail["reasons"],
+                                "message": f"Tail-risk kill-switch: {'; '.join(_tail['reasons'])}"}
+            except Exception as _te:
+                self.logger.debug(f"tail-risk gate skipped: {_te}")
+
         live_decision = policy.can_trade_live()
         
         if live_decision.allowed and config.BINANCE_API_KEY and config.BINANCE_SECRET:
