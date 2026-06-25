@@ -235,10 +235,17 @@ class BaseDepartmentAgent:
         manifesto = self.load_manifesto()
         if manifesto:
             system_prompt = f"{system_prompt}\n\n[DEPARTMAN MANIFESTOSU]\n{manifesto}"
-        
+
+        # Unicorn uzmanlık paketi (domain cutting-edge + ötesine-geç direktifi)
+        try:
+            from core.expertise.domain_expertise import get_expertise_brief
+            system_prompt = system_prompt + get_expertise_brief(self.department)
+        except Exception:
+            pass
+
         # Inject dynamic environment context
         system_prompt = system_prompt + self._get_environmental_context()
-        
+
         # Load corporate knowledge context dynamically
         knowledge_context = await self.load_knowledge_context(prompt)
         if knowledge_context:
@@ -369,7 +376,14 @@ class BaseDepartmentAgent:
         manifesto = self.load_manifesto()
         if manifesto:
             system_prompt = f"{system_prompt}\n\n[DEPARTMAN MANIFESTOSU]\n{manifesto}"
-        
+
+        # Unicorn uzmanlık paketi (domain cutting-edge + ötesine-geç direktifi)
+        try:
+            from core.expertise.domain_expertise import get_expertise_brief
+            system_prompt = system_prompt + get_expertise_brief(self.department)
+        except Exception:
+            pass
+
         # Inject dynamic environment context
         system_prompt = system_prompt + self._get_environmental_context()
 
