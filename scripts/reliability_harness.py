@@ -40,6 +40,15 @@ CASES = [
     ("zeze_production", "departments.zeze_production.agent",  "ZezeProductionAgent", "Video içerik üretim planı"),
     ("zeze_comms",      "departments.zeze_comms.agent",      "ZezeCommsAgent",      "Ürün lansmanı basın bülteni"),
     ("zeze_dev",        "departments.zeze_dev.agent",        "ZezeDevAgent",        "is_even(n) fonksiyonu yaz ve pytest ekle"),
+    ("app_factory",     "departments.app_factory.agent",     "AppFactoryAgent",     "FastAPI todo uygulaması scaffold oluştur"),
+    ("crypto_trading",  "departments.crypto_trading.agent",  "CryptoTradingAgent",  "BTC için kısa piyasa analizi yap"),
+    ("media_factory",   "departments.media_factory.agent",   "MediaFactoryAgent",   "Tanıtım videosu konsepti hazırla"),
+    ("zeze_academy",    "departments.zeze_academy.agent",    "ZezeAcademyAgent",    "Python başlangıç eğitim müfredatı"),
+    ("zeze_aro",        "departments.zeze_aro.agent",        "ZezeAroAgent",        "Büyüme metrikleri analizi"),
+    ("zeze_sec",        "departments.zeze_sec.agent",        "ZezeSecAgent",        "Kod güvenlik denetimi yap"),
+    ("zeze_design",     "departments.zeze_design.agent",     "ZezeDesignAgent",     "Dashboard için renk paleti ve layout tasarla"),
+    ("zeze_rnd",        "departments.zeze_rnd.agent",        "ZezeRndAgent",        "Yeni TTS teknolojilerini tara ve test et"),
+    ("zeze_betting",    "departments.zeze_betting.agent",    "ZezeBettingAgent",    "Maç tahmin istatistik analizi"),
 ]
 
 

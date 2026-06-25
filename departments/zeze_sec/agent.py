@@ -131,8 +131,60 @@ class ZezeSecAgent(BaseDepartmentAgent):
                 "hitl_rule_triggered": hitl_rule_triggered
             }
             
-        system_prompt = "Sen ZezeLabs Siber Güvenlik (Security) ajanısın. Güvenlik açıklarını tespit eder, sızma testi raporları hazırlar, OWASP standartlarına göre risk değerlendirmesi yapar ve güvenli yazılım geliştirme kılavuzları üretirsin. Zero-Trust mimarisini benimsersin."
-        return await self._standard_execute(task_data, system_prompt)
+        # Genel güvenlik denetimi — ALAN RUBRİĞİ zorunlu (jenerik deneme değil).
+        # OWASP-tarzı kategorilerin HER BİRİ kapsanmalı: kimlik doğrulama, injection,
+        # secret yönetimi, rate-limit, veri ifşası, bağımlılık zafiyetleri.
+        import re
+        prompt = (
+            f"GÖREV: {description}\n\n"
+            f"Bir kıdemli siber güvenlik denetçisi (Zero-Trust + OWASP) olarak denetim yap. "
+            f"AŞAĞIDAKİ KATEGORİLERİN HER BİRİNİ değerlendir; eksik bırakma.\n"
+            f"SADECE şu JSON ile yanıt ver:\n"
+            f'{{"findings": ['
+            f'{{"category": "auth|injection|secrets|rate_limit|data_exposure|dependencies", '
+            f'"severity": "critical|high|medium|low|none", "issue": "", "remediation": ""}}], '
+            f'"owasp_coverage": ["A01","A03","A07"], "overall_risk": "critical|high|medium|low", '
+            f'"verdict": "tek cümle"}}'
+        )
+        sys_p = ("Sen ZezeLabs Siber Güvenlik ajanısın. Zero-Trust + OWASP Top 10. "
+                 "Her kategoriyi (auth/injection/secrets/rate_limit/data_exposure/dependencies) "
+                 "ayrı ayrı değerlendirir, severity + remediation verirsin. Spekülasyon değil, somut bulgu.")
+        resp = await self.ask_llm(prompt, system_prompt=sys_p)
+        audit = {}
+        try:
+            m = re.search(r'\{.*\}', resp, re.DOTALL)
+            if m:
+                audit = json.loads(m.group(0))
+        except Exception:
+            audit = {"findings": [], "verdict": resp[:200], "overall_risk": "unknown"}
+
+        report_dir = os.path.join(self.workspace_root, "departments", self.department, "reports", task_id)
+        os.makedirs(report_dir, exist_ok=True)
+        report_path = os.path.join(report_dir, "security_audit.json")
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump({"task_id": task_id, "query": description, "audit": audit,
+                       "timestamp": datetime.now().isoformat()}, f, indent=2, ensure_ascii=False)
+        valid = self._validate_artifact(report_path)
+
+        findings = audit.get("findings", [])
+        cats = {f.get("category") for f in findings if isinstance(f, dict)}
+        REQUIRED = {"auth", "injection", "secrets", "rate_limit", "data_exposure", "dependencies"}
+        coverage_pct = round(len(cats & REQUIRED) / len(REQUIRED) * 100)
+        lines = "\n".join(
+            f"- [{f.get('severity','?')}] {f.get('category','?')}: {f.get('issue','?')}"
+            for f in findings if isinstance(f, dict)
+        )
+        output = (
+            f"# Güvenlik Denetim Raporu (Zero-Trust + OWASP)\n\n"
+            f"**Görev:** {description}\n"
+            f"**Genel Risk:** {audit.get('overall_risk', 'N/A')} | **Alan Kapsamı:** %{coverage_pct} ({len(cats & REQUIRED)}/6 kategori)\n\n"
+            f"## Bulgular\n{lines}\n\n**Karar:** {audit.get('verdict', 'N/A')}"
+        )
+        return {
+            "success": valid, "task_id": task_id, "output": output,
+            "artifacts": [report_path], "deliverable": valid,
+            "domain_coverage_pct": coverage_pct,
+        }
 
     async def run_cycle(self) -> Dict[str, Any]:
         """Periyodik siber güvenlik zafiyet ve uyumluluk denetimi döngüsü"""
