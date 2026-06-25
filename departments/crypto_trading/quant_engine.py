@@ -100,6 +100,45 @@ def atr_stop_loss(entry: float, atr_value: float, side: str = "BUY", mult: float
     return round(entry + mult * atr_value, 6)
 
 
+def estimate_slippage_from_book(order_book: Dict, side: str, qty: float) -> Dict:
+    """Order-book derinliğini yürüyerek GERÇEKÇİ slippage tahmin eder.
+    Sabit %0.05 yerine: emir boyutu likiditeyi tüketince fill kötüleşir (market impact).
+    BUY → asks yürür, SELL → bids yürür. Döner: {fill_price, slippage_pct, filled, partial}."""
+    levels = order_book.get("asks" if side.upper() == "BUY" else "bids", [])
+    if not levels or qty <= 0:
+        return {"fill_price": 0.0, "slippage_pct": 0.0, "filled": 0.0, "partial": True}
+    try:
+        best = float(levels[0][0])
+    except (IndexError, ValueError, TypeError):
+        return {"fill_price": 0.0, "slippage_pct": 0.0, "filled": 0.0, "partial": True}
+
+    remaining = qty
+    cost = 0.0
+    filled = 0.0
+    for lvl in levels:
+        try:
+            price = float(lvl[0]); avail = float(lvl[1])
+        except (IndexError, ValueError, TypeError):
+            continue
+        take = min(remaining, avail)
+        cost += take * price
+        filled += take
+        remaining -= take
+        if remaining <= 1e-12:
+            break
+
+    if filled <= 0:
+        return {"fill_price": best, "slippage_pct": 0.0, "filled": 0.0, "partial": True}
+    vwap = cost / filled
+    slip = (vwap - best) / best if side.upper() == "BUY" else (best - vwap) / best
+    return {
+        "fill_price": round(vwap, 6),
+        "slippage_pct": round(slip * 100, 4),
+        "filled": round(filled, 6),
+        "partial": remaining > 1e-9,  # kitap emri tam karşılayamadı (büyük emir)
+    }
+
+
 def funding_signal(funding_rate: float) -> Dict:
     """Perpetual funding rate yorumu — kriptonun yapısal edge'i.
     funding_rate: anlık fonlama oranı (örn 0.0001 = %0.01/8saat).

@@ -1125,9 +1125,23 @@ class CryptoTradingAgent(BaseDepartmentAgent):
             
             filled = False
             exec_price = limit_price
+
+            async def _dyn_slip(sd: str) -> float:
+                """Order-book derinliğinden gerçekçi slippage (büyük emir → market impact)."""
+                try:
+                    from departments.crypto_trading import quant_engine as _q
+                    book = await self.get_binance_order_book(symbol, 20)
+                    info = _q.estimate_slippage_from_book(book, sd, qty)
+                    if info["fill_price"] > 0:
+                        return max(slippage_factor, info["slippage_pct"] / 100.0)
+                except Exception:
+                    pass
+                return slippage_factor
+
             if side == "BUY" and spot_price <= limit_price:
-                # Slippage pricing constraint: BUY filled at min(limit_price, spot_price * (1.0 + slippage))
-                exec_price = round(min(limit_price, spot_price * (1.0 + slippage_factor)), 2)
+                # Slippage: order-book derinliğine göre dinamik (sabit %0.05 değil)
+                bslip = await _dyn_slip("BUY")
+                exec_price = round(min(limit_price, spot_price * (1.0 + bslip)), 2)
                 total_cost = qty * exec_price
                 
                 order_margin = qty * limit_price
@@ -1164,8 +1178,9 @@ class CryptoTradingAgent(BaseDepartmentAgent):
                 
                 filled = True
             elif side == "SELL" and spot_price >= limit_price:
-                # Slippage pricing constraint: SELL filled at max(limit_price, spot_price * (1.0 - slippage))
-                exec_price = round(max(limit_price, spot_price * (1.0 - slippage_factor)), 2)
+                # Slippage: order-book derinliğine göre dinamik
+                sslip = await _dyn_slip("SELL")
+                exec_price = round(max(limit_price, spot_price * (1.0 - sslip)), 2)
                 total_credit = qty * exec_price
                 
                 locked_holdings = portfolio.setdefault("locked_holdings", {})
