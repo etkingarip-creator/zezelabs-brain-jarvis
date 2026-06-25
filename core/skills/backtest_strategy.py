@@ -58,6 +58,11 @@ class BacktestStrategySkill(BaseSkill):
                 "type": "number",
                 "description": "Gerçekçi kayma oranı (fill kötüleşmesi, ~0.0005)",
                 "default": 0.0005
+            },
+            "optimize": {
+                "type": "boolean",
+                "description": "True ise MA parametrelerini walk-forward OOS skoruna göre optimize eder",
+                "default": False
             }
         },
         "required": []
@@ -71,6 +76,7 @@ class BacktestStrategySkill(BaseSkill):
         limit = int(kwargs.get("limit", 100))
         fee_rate = float(kwargs.get("fee_rate", 0.001))
         slippage = float(kwargs.get("slippage", 0.0005))
+        optimize = bool(kwargs.get("optimize", False))
 
         logger.info(f"Running backtest for {symbol} (Fast MA: {fast_ma}, Slow MA: {slow_ma}, Interval: {interval}, Limit: {limit})")
 
@@ -103,6 +109,10 @@ class BacktestStrategySkill(BaseSkill):
             df.set_index("open_time", inplace=True)
         except Exception as e:
             return f"Hata: Mum verileri ayrıştırılamadı. Detay: {e}"
+
+        # 2.5 OPTİMİZASYON modu: en iyi MA parametrelerini OOS (walk-forward) skoruna göre bul
+        if optimize:
+            return self._optimize(df, symbol, interval, limit, fee_rate, slippage)
 
         # 3. Tüm-veri (in-sample) simülasyon — fee + slippage modellemeli
         metrics = self._run_pandas_sim(df, fast_ma, slow_ma, fee_rate, slippage)
@@ -178,6 +188,47 @@ class BacktestStrategySkill(BaseSkill):
             "total_trades": total_trades,
             "win_rate_pct": win_rate_pct
         }
+
+    def _optimize(self, df: pd.DataFrame, symbol: str, interval: str, limit: int,
+                  fee_rate: float, slippage: float) -> str:
+        """Grid search — en iyi (fast,slow) MA'yı OUT-OF-SAMPLE skoruna göre seçer.
+        In-sample'a göre seçmek curve-fit'tir; OOS'a göre seçmek dayanıklıdır."""
+        fast_grid = [5, 8, 12, 20]
+        slow_grid = [21, 26, 50, 100]
+        results = []
+        for f in fast_grid:
+            for s in slow_grid:
+                if f >= s:
+                    continue
+                wf = self._walk_forward(df.copy(), f, s, fee_rate, slippage)
+                if wf["n_windows"] == 0:
+                    continue
+                # Skor: OOS getiri × tutarlılık (sadece getiri değil — istikrar da ödüllendirilir)
+                score = wf["oos_return_pct"] * (wf["consistency_pct"] / 100.0)
+                results.append((score, f, s, wf))
+        if not results:
+            return f"Optimizasyon başarısız: {symbol} için yeterli veri yok (limit artır)."
+        results.sort(key=lambda x: x[0], reverse=True)
+        best = results[0]
+        _, bf, bs, bwf = best
+        # En iyi parametreyle tam in-sample da göster
+        is_m = self._run_pandas_sim(df.copy(), bf, bs, fee_rate, slippage)
+        lines = [
+            f"=== Parametre Optimizasyonu (OOS-tabanlı, curve-fit korumalı) ===",
+            f"Parite: {symbol} | Periyot: {interval} | Mum: {limit} | {len(results)} kombinasyon test edildi",
+            "",
+            f"[EN İYİ PARAMETRE] Hızlı MA: {bf} / Yavaş MA: {bs}",
+            f"- OOS Ortalama Getiri: %{bwf['oos_return_pct']:.2f} (tutarlılık %{bwf['consistency_pct']:.0f})",
+            f"- OOS Win Rate: %{bwf['oos_win_rate_pct']:.2f}",
+            f"- In-sample Getiri: %{is_m['total_return_pct']:.2f} | Sharpe: {is_m['sharpe_ratio']:.2f}",
+            "",
+            "[İLK 3 ALTERNATİF]",
+        ]
+        for sc, f, s, wf in results[1:4]:
+            lines.append(f"- MA {f}/{s}: OOS %{wf['oos_return_pct']:.2f}, tutarlılık %{wf['consistency_pct']:.0f}")
+        lines.append("")
+        lines.append("NOT: Parametre OOS skoruna göre seçildi (in-sample'a göre değil) → curve-fit riski azaltıldı.")
+        return "\n".join(lines)
 
     def _walk_forward(self, df: pd.DataFrame, fast_ma: int, slow_ma: int,
                       fee_rate: float, slippage: float, n_windows: int = 4) -> dict:
