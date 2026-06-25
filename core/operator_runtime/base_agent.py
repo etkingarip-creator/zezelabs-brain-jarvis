@@ -183,8 +183,9 @@ class BaseDepartmentAgent:
             system_prompt = f"{system_prompt}\n\n{knowledge_context}"
 
         try:
-            from core.ai.model_selector import get_model_for_department
-            model = get_model_for_department(self.department)
+            # Politika: basit görev → free, karmaşık görev → Z.ai (glm-5.2)
+            from core.ai.model_selector import select_model_for_task
+            model = select_model_for_task(prompt, self.department)
         except ImportError:
             model = None
 
@@ -321,8 +322,9 @@ class BaseDepartmentAgent:
             system_prompt_enforced = f"{system_prompt_enforced}\n\n{knowledge_context}"
 
         try:
-            from core.ai.model_selector import get_model_for_department
-            model = get_model_for_department(self.department)
+            # Politika: basit görev → free, karmaşık görev → Z.ai (glm-5.2)
+            from core.ai.model_selector import select_model_for_task
+            model = select_model_for_task(prompt, self.department)
         except ImportError:
             model = None
 
