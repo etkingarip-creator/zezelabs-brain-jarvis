@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Sliders, Volume2, Database, ShieldAlert, Check } from 'lucide-react';
 import { API_BASE } from '../lib/config';
+import { AVAILABLE_MODELS, isActiveModel } from '../lib/models';
 import { useJarvisConnection } from '../hooks/useJarvisConnection';
 
 interface Props {
@@ -11,6 +12,8 @@ interface Props {
 export default function SettingsPanel({ voiceEnabled, onToggleVoice }: Props) {
   const jarvis = useJarvisConnection();
   const serverModel = jarvis.brainStatus.model || 'gemma_2b';
+  // Ham sunucu modelini select için bir model ID'sine çöz (yanlış seçili gösterimi önler)
+  const activeModelId = AVAILABLE_MODELS.find(m => isActiveModel(serverModel, m.id))?.id || 'antigravity';
 
   const [voiceGender, setVoiceGender] = useState(() => localStorage.getItem('zom_settings_voice_gender') || 'robot');
   const [telemetryDelay, setTelemetryDelay] = useState(() => localStorage.getItem('zom_settings_telemetry_delay') || '3');
@@ -104,7 +107,7 @@ export default function SettingsPanel({ voiceEnabled, onToggleVoice }: Props) {
             Aktif Yapay Zeka Modeli
           </label>
           <select
-            value={serverModel}
+            value={activeModelId}
             onChange={(e) => {
               const val = e.target.value;
               jarvis.sendWsControl('model_change', val);
@@ -118,10 +121,9 @@ export default function SettingsPanel({ voiceEnabled, onToggleVoice }: Props) {
               fontSize: '0.86rem'
             }}
           >
-            <option value="antigravity">Antigravity (Otonom Yönlendirme)</option>
-            <option value="glm-5.2">Zenmux GLM-5.2 (Akıl Yürütme)</option>
-            <option value="openrouter_free">OpenRouter Free Tier (Hızlı)</option>
-            <option value="claude_35">Claude 3.5 Sonnet (Global)</option>
+            {AVAILABLE_MODELS.map(m => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
           </select>
           <p className="text-[10px] text-slate-500 font-mono">
             Kritik işlemler ve kodlama talepleri için global modeller önerilir.

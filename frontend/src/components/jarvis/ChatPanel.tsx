@@ -10,7 +10,8 @@ import { useUIStore, useJarvisStore } from '../../stores';
 import InputBlock from './chat/InputBlock';
 import OutputBlock from './chat/OutputBlock';
 import RoutingBlock from './chat/RoutingBlock';
-import { AVAILABLE_MODELS, buildActivitySteps, formatTime } from './chat/chatHelpers';
+import { buildActivitySteps, formatTime } from './chat/chatHelpers';
+import { AVAILABLE_MODELS, resolveModelLabel } from '../../lib/models';
 
 interface Props {
   messages: ChatMessage[];
@@ -57,15 +58,8 @@ const ChatPanel = memo(function ChatPanel({
   
   const brainStatus = useJarvisStore(state => state.brainStatus);
   const activeModelId = brainStatus.model || 'antigravity';
-  
-  const activeModelLabel = AVAILABLE_MODELS.find(m => 
-    m.id === activeModelId || 
-    activeModelId.toLowerCase().endsWith(m.id.toLowerCase()) ||
-    (m.id === 'antigravity' && (activeModelId.toLowerCase().includes('gemma') || activeModelId.toLowerCase().includes('antigravity'))) ||
-    (m.id === 'glm-5.2' && (activeModelId.toLowerCase().includes('glm-5.2') || activeModelId.toLowerCase().includes('glm_5.2') || activeModelId.toLowerCase().includes('glm-4.5'))) ||
-    (m.id === 'openrouter_free' && (activeModelId.toLowerCase().includes('openrouter_free') || activeModelId.toLowerCase().includes('openrouter/free') || activeModelId.toLowerCase().includes('free'))) ||
-    (m.id === 'claude_35' && (activeModelId.toLowerCase().includes('claude-3.5') || activeModelId.toLowerCase().includes('claude_35') || activeModelId.toLowerCase().includes('claude-3-5')))
-  )?.label || activeModelId;
+  // Tek kaynaklı çözücü (lib/models) — kırılgan .includes() zinciri kaldırıldı
+  const activeModelLabel = resolveModelLabel(activeModelId);
 
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);

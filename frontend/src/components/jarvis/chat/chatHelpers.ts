@@ -14,12 +14,8 @@ export const DEPT_COLORS: Record<string, { color: string; dim: string; border: s
 
 export const DEFAULT_DEPT = { color: '#22d3ee', dim: 'rgba(34,211,238,0.09)', border: 'rgba(34,211,238,0.22)', label: 'ZOM' };
 
-export const AVAILABLE_MODELS = [
-  { id: 'antigravity', label: 'Antigravity (Otonom Yönlendirme)' },
-  { id: 'glm-5.2', label: 'Zenmux GLM-5.2 (Akıl Yürütme)' },
-  { id: 'openrouter_free', label: 'OpenRouter Free Tier (Hızlı)' },
-  { id: 'claude_35', label: 'Claude 3.5 Sonnet (Global)' },
-];
+// Model listesi tek kaynaktan (lib/models) — duplikasyon kaldırıldı
+export { AVAILABLE_MODELS } from '../../../lib/models';
 
 export function getDeptStyle(deptId?: string | null) {
   return deptId ? (DEPT_COLORS[deptId] ?? DEFAULT_DEPT) : DEFAULT_DEPT;
