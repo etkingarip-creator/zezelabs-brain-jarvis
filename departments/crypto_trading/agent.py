@@ -539,6 +539,43 @@ class CryptoTradingAgent(BaseDepartmentAgent):
             except Exception as e:
                 binance_context = f"=== BINANCE API ERROR ===\nHata: {str(e)}"
 
+        # GERÇEK QUANT ANLIK-GÖRÜNTÜ: sembol tespit edilince kline'larla ATR/ADX/rejim hesapla
+        # → LLM tahmin değil, gerçek kantitatif veriyle analiz yapar (unicorn-quant).
+        quant_context = ""
+        try:
+            import re as _re
+            from departments.crypto_trading import quant_engine as _q
+            _pairs = {"btc": "BTCUSDT", "bitcoin": "BTCUSDT", "eth": "ETHUSDT", "ethereum": "ETHUSDT",
+                      "sol": "SOLUSDT", "bnb": "BNBUSDT", "xrp": "XRPUSDT", "doge": "DOGEUSDT", "ada": "ADAUSDT"}
+            dl = description.lower()
+            sym = None
+            m = _re.search(r"\b([a-z0-9]{3,10}usdt)\b", dl)
+            if m:
+                sym = m.group(1).upper()
+            else:
+                for kw, pair in _pairs.items():
+                    if kw in dl:
+                        sym = pair
+                        break
+            if sym:
+                kl = await self.get_binance_klines(sym, "1h", 50)
+                if kl and isinstance(kl, list) and len(kl) >= 20:
+                    highs = [float(k[2]) for k in kl]; lows = [float(k[3]) for k in kl]; closes = [float(k[4]) for k in kl]
+                    atr_v = _q.atr(highs, lows, closes); adx_v = _q.adx(highs, lows, closes)
+                    regime = _q.market_regime(adx_v); price = closes[-1]
+                    suggested_stop = _q.atr_stop_loss(price, atr_v, "BUY")
+                    quant_context = (
+                        f"\n\n=== GERÇEK QUANT ANLIK-GÖRÜNTÜ ({sym}) ===\n"
+                        f"- Güncel fiyat: {price}\n- ATR(14): {atr_v} (volatilite)\n"
+                        f"- ADX(14): {adx_v} → Piyasa rejimi: {regime} "
+                        f"({'momentum işlemine uygun' if regime=='trend' else 'range — momentum işlemi RİSKLİ' if regime=='range' else 'geçiş'})\n"
+                        f"- ATR-tabanlı önerilen stop (long, 2×ATR): {suggested_stop}\n"
+                        f"Bu gerçek metrikleri kullan. Range rejiminde momentum işlemi önerme. "
+                        f"Stop'u ATR'ye göre belirle, sabit % kullanma."
+                    )
+        except Exception as _qe:
+            self.logger.debug(f"quant snapshot skipped: {_qe}")
+
         # Gerçek LLM Çağrısı (Dinamik Üretim + Tool Calling + Kurumsal Hafıza + Self Correction)
         system_prompt = (
             "Sen ZezeLabs Kripto Ticaret (Crypto Trading) ajanısın. Kripto para piyasalarını analiz eder, teknik ve temel analiz raporları hazırlar, risk yönetimi stratejileri ve portföy önerileri sunarsın. Asla spekülatif tahmin sunmazsın; veri ve modele dayalı akıl yürütürsün.\n"
@@ -554,6 +591,8 @@ class CryptoTradingAgent(BaseDepartmentAgent):
         )
         if binance_context:
             system_prompt += f"\n\n{binance_context}\n\nLütfen yukarıdaki GERÇEK zamanlı Binance verilerini kullanarak kullanıcının cüzdan/varlık sorusunu cevapla. Kesinlikle 'API anahtarlarına doğrudan erişim kısıtlanmıştır' veya 'gerçek veriye erişimim yok' deme; çünkü gerçek veriler yukarıda sağlanmıştır."
+        if quant_context:
+            system_prompt += quant_context
         if past_context:
             system_prompt += f"\n\nŞirket Geçmiş Hafızası:\n{past_context}"
             
