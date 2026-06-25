@@ -420,7 +420,9 @@ class ZezeBettingAgent(BaseDepartmentAgent):
             "success": True,
             "report_path": report_path,
             "task_id": task_id,
-            "output": report_content
+            "output": report_content,
+            "artifacts": [report_path],
+            "deliverable": True,
         }
 
     async def get_real_sport_odds(self) -> dict:

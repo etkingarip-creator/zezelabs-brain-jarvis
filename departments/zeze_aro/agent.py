@@ -110,19 +110,21 @@ class ZezeAroAgent(BaseDepartmentAgent):
         self.roi.record_outcome(f"{self.department}_agent", task_id, "task", True)
         self.memory.add_memory(memory_text=llm_response, metadata={"task": goal, "dept": self.department}, tier="long")
         
-        return AgentResult(
-            task_id=task_id,
-            success=True,
-            department=self.department,
-            output=llm_response,
-            tool_results=[{
+        return {
+            "success": True,
+            "task_id": task_id,
+            "department": self.department,
+            "output": llm_response,
+            "report_path": report_path,
+            "artifacts": created_files,
+            "deliverable": True,
+            "tool_results": [{
                 "task_id": task_id,
                 "type": task_type,
                 "files_created": created_files,
-                "policy_checks": policy_checks
+                "policy_checks": policy_checks,
             }],
-            error=None
-        )
+        }
 
     def _run_sync(self, coro):
         import asyncio

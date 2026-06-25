@@ -328,13 +328,14 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         }
         
         # 5. Ask LLM to generate response or fallback to mock
-        max_retries = 3
+        # Yerel 7B'de tool-loop (5 döngü) çok yavaş → konsept/metin için plain ask_llm + 2 retry
+        max_retries = 2
         llm_response = ""
         current_description = goal
-        
+
         for attempt in range(max_retries):
             try:
-                llm_response = await self.ask_llm_with_tools(prompt=current_description, system_prompt=system_prompt)
+                llm_response = await self.ask_llm(prompt=current_description, system_prompt=system_prompt)
             except Exception as e:
                 self.logger.warning(f"LLM call failed: {e}. Using fallback mock response.")
                 llm_response = f"# {task_type.capitalize()} Content\nGenerated for: {goal}\nStatus: Fallback Success."

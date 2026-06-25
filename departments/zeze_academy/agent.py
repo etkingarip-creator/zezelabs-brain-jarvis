@@ -100,7 +100,9 @@ class ZezeAcademyAgent(BaseDepartmentAgent):
                     "trace_id": trace.trace_id,
                     "output": output_text,
                     "target_department": target_dept,
-                    "curriculum_id": curriculum_id
+                    "curriculum_id": curriculum_id,
+                    "artifacts": [report_path],
+                    "deliverable": True,
                 }
             except Exception as e:
                 trace.finish(status="failed", error=str(e))
