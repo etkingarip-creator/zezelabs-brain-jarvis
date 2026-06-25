@@ -10,6 +10,7 @@ import time
 import json
 import sqlite3
 import os
+import threading
 
 class TieredMemoryClient:
     """
@@ -21,14 +22,27 @@ class TieredMemoryClient:
         self.db_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data")
         os.makedirs(self.db_dir, exist_ok=True)
         self._sqlite_path = os.path.join(self.db_dir, db_name)
-        
+        self._write_lock = threading.Lock()  # R4: aynı bağlantıda çok-thread yazma serileştirme
+
         print(f"[TieredMemory v2] Initializing BM25-style SQLite memory at {self._sqlite_path}...")
         self._init_db()
 
     def _init_db(self):
         try:
             self._sqlite_conn = sqlite3.connect(self._sqlite_path, check_same_thread=False)
-            
+
+            # R4 — Concurrent-safe hafıza: paralel ajanlar (her biri kendi bağlantısı)
+            # aynı anda yazarken bozulma/'database is locked' olmasın.
+            #  - WAL: çoklu okuyucu + tek yazıcı engelsiz (paralel okuma serbest)
+            #  - busy_timeout: kilit varsa hata vermek yerine 5sn bekle
+            #  - synchronous=NORMAL: WAL ile güvenli + hızlı
+            try:
+                self._sqlite_conn.execute("PRAGMA journal_mode=WAL")
+                self._sqlite_conn.execute("PRAGMA busy_timeout=5000")
+                self._sqlite_conn.execute("PRAGMA synchronous=NORMAL")
+            except Exception as pe:
+                print(f"[TieredMemory v2] PRAGMA ayarı atlandı: {pe}")
+
             # Ana Tablo
             self._sqlite_conn.execute("""
                 CREATE TABLE IF NOT EXISTS memory (
@@ -72,12 +86,12 @@ class TieredMemoryClient:
         doc_id = uuid.uuid4().hex
         
         try:
-            self._sqlite_conn.execute(
-                "INSERT INTO memory (id, text, metadata, tier) VALUES (?, ?, ?, ?)",
-                (doc_id, memory_text, json.dumps(metadata, ensure_ascii=False), tier)
-            )
-            self._sqlite_conn.commit()
-            # print(f"[TieredMemory v2] Inserted memory {doc_id[:8]} ({tier})")
+            with self._write_lock:
+                self._sqlite_conn.execute(
+                    "INSERT INTO memory (id, text, metadata, tier) VALUES (?, ?, ?, ?)",
+                    (doc_id, memory_text, json.dumps(metadata, ensure_ascii=False), tier)
+                )
+                self._sqlite_conn.commit()
         except Exception as e:
             print(f"[TieredMemory v2] Failed to insert memory: {e}")
 
@@ -87,9 +101,10 @@ class TieredMemoryClient:
         if not self._sqlite_conn:
             return 0
         try:
-            cur = self._sqlite_conn.execute("DELETE FROM memory WHERE tier = 'session'")
-            self._sqlite_conn.commit()
-            return cur.rowcount or 0
+            with self._write_lock:
+                cur = self._sqlite_conn.execute("DELETE FROM memory WHERE tier = 'session'")
+                self._sqlite_conn.commit()
+                return cur.rowcount or 0
         except Exception as e:
             print(f"[TieredMemory v2] clear_session_memory failed: {e}")
             return 0
