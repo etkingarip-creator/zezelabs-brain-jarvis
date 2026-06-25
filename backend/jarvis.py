@@ -2569,7 +2569,36 @@ SADECE GEÇERLİ BİR JSON DÖNDÜR, başka hiçbir metin ekleme.'''
                 context = task_payload.get("context") or {}
                 
                 logger.info(f"[Local Dispatcher] Task {task_id} dequeued for department: {dept}")
-                
+
+                # R5 — Idempotency: aynı task_id iki kez yürütülmesin (gerçek kripto emri/
+                # deployment/içerik gönderimi tekrarını önler). İşlenmiş veya işlenmekte olanı atla.
+                if task_id:
+                    if not hasattr(self, "_processed_task_ids"):
+                        self._processed_task_ids = set()
+                    if task_id in self._processed_task_ids:
+                        logger.warning(f"[Idempotency] Task {task_id} zaten işlendi → tekrar atlandı.")
+                        self.local_task_queue.task_done()
+                        continue
+                    self._processed_task_ids.add(task_id)
+                    # Bellek sınırı: son 5000 task_id tut
+                    if len(self._processed_task_ids) > 5000:
+                        self._processed_task_ids = set(list(self._processed_task_ids)[-2500:])
+
+                # R5 — Circuit breaker: bir departman 120sn içinde 3+ ardışık hata aldıysa
+                # fast-fail (retry storm / cascade önle, gerçek kaynak yakma).
+                _fc = getattr(self, "_dept_failures", {}).get(dept)
+                if _fc and _fc["count"] >= 3 and (time.time() - _fc["ts"]) < 120:
+                    logger.warning(f"[CircuitBreaker] {dept} açık ({_fc['count']} ardışık hata) → fast-fail.")
+                    fail_env = {
+                        "task_id": task_id, "client_id": client_id, "sender": sender,
+                        "status": "failed", "error": f"Circuit breaker açık: {dept} geçici devre dışı",
+                        "department": dept, "completed_at": datetime.now().isoformat(),
+                    }
+                    self.task_results[task_id] = fail_env
+                    self._schedule_broadcast(fail_env)
+                    self.local_task_queue.task_done()
+                    continue
+
                 agent = self.agents.get(dept)
                 if not agent:
                     error_msg = f"Unknown department '{dept}'"
@@ -2671,6 +2700,10 @@ SADECE GEÇERLİ BİR JSON DÖNDÜR, başka hiçbir metin ekleme.'''
                             "completed_at": datetime.now().isoformat()
                         }
                         
+                        # R5 — Circuit breaker: başarıda ardışık hata sayacını sıfırla
+                        if hasattr(self, "_dept_failures"):
+                            self._dept_failures.pop(t_dept, None)
+
                         self.task_history.append({
                             "task_id": t_id,
                             "status": "success",
@@ -2766,7 +2799,15 @@ SADECE GEÇERLİ BİR JSON DÖNDÜR, başka hiçbir metin ekleme.'''
                             
                     except Exception as e:
                         logger.exception(f"Error executing agent {t_dept} via local queue: {e}")
-                        
+
+                        # R5 — Circuit breaker: ardışık hata sayacını artır
+                        if not hasattr(self, "_dept_failures"):
+                            self._dept_failures = {}
+                        fc = self._dept_failures.get(t_dept, {"count": 0, "ts": 0.0})
+                        fc["count"] += 1
+                        fc["ts"] = time.time()
+                        self._dept_failures[t_dept] = fc
+
                         formatted_error_output = self._format_evidence_report(
                             description, 
                             t_dept, 
