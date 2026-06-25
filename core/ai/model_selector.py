@@ -9,6 +9,13 @@ def select_model_for_task(task_description: str, department: Optional[str] = Non
     Score > 0.7: Zenmux (GLM-5.2)
     Score < 0.7: OpenRouter (Fast/Free Tier)
     """
+    # Bütçe-korumalı per-departman bulut override: sadece belirtilen ağır/çok-adımlı
+    # departmanlar Z.ai (glm-5.2) kullanır; gerisi yerelde kalır (ücretsiz).
+    # ZOM_CLOUD_DEPTS=media_factory,zeze_aro,zeze_academy gibi.
+    cloud_depts = {d.strip() for d in os.getenv("ZOM_CLOUD_DEPTS", "").split(",") if d.strip()}
+    if department and department in cloud_depts:
+        return "glm-5.2"
+
     primary = os.getenv("ZOM_PRIMARY_PROVIDER", "").lower()
 
     # Birincil sağlayıcı yerel Ollama ise ÖLÜ bulut şelalesini (OpenRouter/Z.ai/Gemini)

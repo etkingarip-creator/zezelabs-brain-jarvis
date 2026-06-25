@@ -155,7 +155,8 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         )
         
         try:
-            bible_response = await self.ask_llm_with_tools(
+            # Yerel/bütçe: tool-loop yerine plain ask_llm (Series Bible JSON üretimi tool gerektirmez)
+            bible_response = await self.ask_llm(
                 prompt=f"Dizi Hedefi: {goal}\nJSON formatında Series Bible üret.",
                 system_prompt=system_prompt
             )
