@@ -270,7 +270,15 @@ class MediaFactoryAgent(BaseDepartmentAgent):
             "distribution_plan": "Sen ZezeLabs Medya (Media Factory) ajanısın. İçerik dağıtım stratejileri ve platform planları (Twitter, LinkedIn, YT vb.) hazırlarsın."
         }
         system_prompt = prompts.get(task_type, "Sen ZezeLabs Medya (Media Factory) ajanısın. Sosyal medya planları, yaratıcı metinler ve reklam kampanyaları oluşturursun.")
-        
+
+        # Domain-fitness: video/script/içerik görevlerine kanıtlı VİRAL HOOK kütüphanesini enjekte et
+        if task_type in ("video", "youtube_short", "youtube_long", "content", "reel", "tiktok", "shorts"):
+            try:
+                from departments.media_factory.hook_library import build_hook_brief
+                system_prompt += "\n\n" + build_hook_brief()
+            except Exception as _he:
+                self.logger.debug(f"hook library skipped: {_he}")
+
         # Live Search Integration using DuckDuckGo search skill for trend research
         try:
             self.logger.info(f"[{task_id}] Running trend search query for: {goal[:30]}")
