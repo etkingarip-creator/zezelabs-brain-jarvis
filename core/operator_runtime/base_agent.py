@@ -263,11 +263,16 @@ class BaseDepartmentAgent:
         """Generates dynamic environment, workspace, database and tech stack context for the agent prompt."""
         abs_workspace = os.path.abspath(self.workspace_root)
         db_path = os.path.abspath(os.path.join(abs_workspace, "data", "ecosys_memory_v2.db"))
-        superpowers_dir = os.path.abspath(os.path.join(abs_workspace, "docs", "superpowers"))
-        ecc_dir = os.path.abspath(os.path.join(abs_workspace, "docs", "ecc"))
-        understand_anything_dir = os.path.abspath(os.path.join(abs_workspace, "scratch", "understand-anything"))
-        quantmind_dir = os.path.abspath(os.path.join(abs_workspace, "scratch", "quant-mind"))
-        rowboat_sdk_dir = os.path.abspath(os.path.join(abs_workspace, "rowboat"))
+        # Opsiyonel skill kütüphaneleri: dizin yoksa prompt'a ölü yol değil,
+        # açık "kurulu değil" işareti yazılır (scratch/ güvenle kaldırılabilir).
+        def _opt(*parts: str) -> str:
+            p = os.path.abspath(os.path.join(abs_workspace, *parts))
+            return p if os.path.isdir(p) else "[KÜTÜPHANE KURULU DEĞİL — bu yeteneği kullanma]"
+        superpowers_dir = _opt("docs", "superpowers")
+        ecc_dir = _opt("docs", "ecc")
+        understand_anything_dir = _opt("scratch", "understand-anything")
+        quantmind_dir = _opt("scratch", "quant-mind")
+        rowboat_sdk_dir = _opt("rowboat")
         
         context = (
             "\n\n[ENVIRONMENT & RUNTIME CONTEXT]\n"
