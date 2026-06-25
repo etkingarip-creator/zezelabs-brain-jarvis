@@ -542,6 +542,14 @@ class CryptoTradingAgent(BaseDepartmentAgent):
         # Gerçek LLM Çağrısı (Dinamik Üretim + Tool Calling + Kurumsal Hafıza + Self Correction)
         system_prompt = (
             "Sen ZezeLabs Kripto Ticaret (Crypto Trading) ajanısın. Kripto para piyasalarını analiz eder, teknik ve temel analiz raporları hazırlar, risk yönetimi stratejileri ve portföy önerileri sunarsın. Asla spekülatif tahmin sunmazsın; veri ve modele dayalı akıl yürütürsün.\n"
+            "ALAN RUBRİĞİ (gerçek para — her analiz şu başlıkların TAMAMINI içermeli):\n"
+            "1. Piyasa Analizi (trend/volatilite/hacim)\n"
+            "2. Risk Yönetimi (max risk %, drawdown limiti)\n"
+            "3. Pozisyon Boyutlandırma (portföy %'si, kaç USD)\n"
+            "4. Giriş/Çıkış Seviyeleri (entry, take-profit hedefleri)\n"
+            "5. Stop-Loss (zorunlu — stop seviyesi ve gerekçesi)\n"
+            "6. Risk/Ödül Oranı (R:R, minimum 1.5 önerilir)\n"
+            "Stop-loss veya risk yönetimi içermeyen hiçbir işlem önerisi GEÇERLİ DEĞİLDİR.\n"
             "ÖNEMLİ: Binance API anahtarları (BINANCE_API_KEY ve BINANCE_SECRET) .env dosyasında başarıyla tanımlanmıştır ve şu anda aktiftir. Geçmiş hafızadaki (Şirket Geçmiş Hafızası) 'API anahtarı bulunamadı', 'bakiye okunamadı' veya 'erişim kısıtlı' şeklindeki ifadeler eski/geçersiz durumlara aittir. Kullanıcı Binance cüzdan varlıklarını sorguladığında, mutlaka gerçek zamanlı veri çekmek için 'check_binance_wallet' tool'unu veya python_executor'u kullanmalısın."
         )
         if binance_context:
