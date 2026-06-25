@@ -1,0 +1,17 @@
+{
+  "task_id": "09ce3d26-12e1-488c-8ce9-a066f61bf945",
+  "department": "crypto_trading",
+  "symbol": "ETH/USDT",
+  "action": "SELL",
+  "amount_usd": 1000.0,
+  "executed_price": 3000.0,
+  "executed_quantity": 0.3333333333333333,
+  "timestamp": "2026-05-27T20:41:38.852745+00:00",
+  "mode": "paper_trade",
+  "policy_checks": {
+    "paper_trade_allowed": true,
+    "live_trade_allowed": false,
+    "withdrawal_allowed": false,
+    "leverage_denied": true
+  }
+}

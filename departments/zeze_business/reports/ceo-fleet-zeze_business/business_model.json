@@ -1,0 +1,18 @@
+{
+  "task_id": "ceo-fleet-zeze_business",
+  "department": "zeze_business",
+  "timestamp": "2026-06-25T03:32:33.054255",
+  "query": "SaaS pazari TAM/SAM analizi",
+  "market_sources": "No search results found for: SaaS pazari TAM/SAM analizi market size TAM competitors 2026",
+  "model": {
+    "tam_usd": 310000000000,
+    "sam_usd": 65000000000,
+    "som_usd": 9500000000,
+    "top_competitors": [
+      "Salesforce",
+      "Microsoft Dynamics 365"
+    ],
+    "growth_rate_pct": 12.5,
+    "strategic_recommendation": "Küçük ve orta ölçekli işletmelere yönelik, düşük maliyetli, modüler SaaS çözümleri geliştirerek, rekabetçi fiyatlandırma ve entegrasyon kolaylığıyla 2026’da ortalama 12.5 % büyüme hedeflenebilir; aynı zamanda stratejik iş ortaklıkları ve açık API ekosistemi ile pazar payı artırılabilir."
+  }
+}

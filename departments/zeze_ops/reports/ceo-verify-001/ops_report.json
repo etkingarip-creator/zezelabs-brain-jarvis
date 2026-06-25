@@ -1,0 +1,38 @@
+{
+  "task_id": "ceo-verify-001",
+  "department": "zeze_ops",
+  "timestamp": "2026-06-25T00:53:45.660417",
+  "query": "Sistem operasyon durumunu denetle ve optimizasyon öner",
+  "live_metrics": {
+    "cpu_percent": 17.7,
+    "memory_percent": 50.8,
+    "disk_percent": 45.3,
+    "process_count": 318
+  },
+  "optimization_plan": {
+    "bottlenecks": [
+      {
+        "issue_id": "OP-2024-157",
+        "description": "318 aktif süreç yoğunluğunda CPU kaynak optimizasyonu gerekliliği var - %17.7 değer düşük ama yüksek işlemci kullanımı belirsiz."
+      }
+    ],
+    "kpis": {
+      "hedef_metrik": "process_count_ozunluk",
+      "current_value": 318,
+      "target_value": 200,
+      "expected_improvement_percent": "-47.6"
+    },
+    "action_items": [
+      {
+        "task_id": "OPT-001",
+        "title": "Süreç yoğunluğunu analiz et ve kaynak kullanımı optimizasyonu planla",
+        "description": "`python_executor` aracılığıyla mevcut süreçleri inceleyip, CPU verimliliği düşük olan süreçlerin ID'lerini tespit etmek."
+      },
+      {
+        "task_id": "OPT-002",
+        "title": "Sistem kaynak kullanımını optimize et - Memory ve Disk kontrolü"
+      }
+    ],
+    "priority": "medium"
+  }
+}

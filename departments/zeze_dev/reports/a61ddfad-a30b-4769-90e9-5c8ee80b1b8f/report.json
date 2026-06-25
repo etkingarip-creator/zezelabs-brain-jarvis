@@ -1,0 +1,9 @@
+{
+  "task_id": "a61ddfad-a30b-4769-90e9-5c8ee80b1b8f",
+  "department": "zeze_dev",
+  "timestamp": "2026-06-10T12:15:09.848388",
+  "query": "binance cüzdan kontrolü görevi ne oldu? cüzdan varlıklarını yaz",
+  "output": "**Binance Cüzdan Kontrolü Gerekçeleri**\n\n[Özet]\nBinance cüzdan kontrolü görevi, cüzdan varlıklarını yazma görevini içerir. Bu görev, verilerin doğru ve eksiksiz bir şekilde sunulmasını gerektirir. Ancak, önceki denemede, verilerin taslak olarak sunulması ve Türkçe karakter hatası varlığı, görevin tamamlanmasını engelledi.\n\n**Gerekçeler:**\n\n1.  **Veri Sunmak yerine Taslak Verildi:** Veriler, kullanıcıya verilmeden önce taslak olarak sunuldu. Bu, görevin tamamlanmasını engelledi ve kullanıcıya hatalı veya eksiksiz veri sunuldu.\n2.  **Türkçe Karakter Hatası Var:** Verilerde Türkçe karakter hatası var. Bu, verilerin doğru ve eksiksiz bir şekilde sunulmasını engelledi.\n3.  **Sorumluluk Kullanıcıya Atıldı:** Görev, kullanıcıya atıldı. Bu, görevin tamamlanmasını engelledi ve kullanıcıya hatalı veya eksiksiz veri sunuldu.\n\n**Öneriler:**\n\n1.  **Veri Sunmak yerine Taslak Verilmesinden Korkulma:** Veriler, kullanıcıya verilmeden önce taslak olarak sunulmalıdır. Bu, görevin tamamlanmasını engelledi ve kullanıcıya hatalı veya eksiksiz veri sunuldu.\n2.  **Türkçe Karakter Hatası Varlığından Korkulma:** Verilerde Türkçe karakter hatası var. Bu, verilerin doğru ve eksiksiz bir şekilde sunulmasını engelledi.\n3.  **Sorumluluk Kullanıcıya Atılmaması:** Görev, kullanıcıya atılmamalıdır. Bu, görevin tamamlanmasını engelledi ve kullanıcıya hatalı veya eksiksiz veri sunuldu.\n\n**Sonuç:**\nGörev, kullanıcıya verilmeden önce taslak olarak sunuldu ve Türkçe karakter hatası var. Bu, görevin tamamlanmasını engelledi ve kullanıcıya hatalı veya eksiksiz veri sunuldu. Görev, kullanıcıya atılmamalıdır ve verilerin doğru ve eksiksiz bir şekilde sunulmalıdır.",
+  "status": "completed",
+  "trace_id": "74909b0af679"
+}

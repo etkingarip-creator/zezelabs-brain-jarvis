@@ -1,0 +1,9 @@
+{
+  "task_id": "a9360c02-2ae1-480e-9479-5671563f42ad",
+  "department": "zeze_design",
+  "timestamp": "2026-06-22T18:43:13.267406",
+  "query": "neon renkli bir dashboard tasarla",
+  "output": "```tsx\nimport React from 'react';\nimport { Sparkles } from 'lucide-react';\nimport { motion } from 'framer-motion';\n\nconst NeonButton: React.FC = () => {\n  return (\n    <motion.button\n      whileHover={{ scale: 1.05 }}\n      whileTap={{ scale: 0.98 }}\n      className=\"bg-[hsl(240,70%,60%)] text-white px-4 py-2 rounded-md shadow-lg hover:bg-[hsl(240,80%,70%)] transition duration-300\"\n    >\n      Click Me!\n    </motion.button>\n  );\n};\n\n// Default export component name must match the file name\nexport default NeonButton;\n```\n\nBu kodu `file_writer` yeteneğini kullanarak 'frontend/src/components/dynamic/NeonButton.tsx' yoluna kaydedin.",
+  "status": "completed",
+  "trace_id": "51fdd8df5931"
+}

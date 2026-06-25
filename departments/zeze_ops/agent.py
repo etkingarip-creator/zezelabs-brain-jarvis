@@ -34,6 +34,11 @@ class ZezeOpsAgent(BaseDepartmentAgent):
         return metrics
 
     async def execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        # Görev-tipi kapsama: alan içi → uzman handler; tanınmazsa generic (needs_review)
+        routes = [(["operasyon", "sistem", "denetim", "metrik", "optimiz", "süreç", "kpi", "verimlilik", "performans", "darboğaz"], self._handle_primary)]
+        return await self.dispatch_by_task_type(task_data, routes, 'Sen ZezeLabs Operasyon ajanısın. Sistem metriği ve optimizasyon üretirsin.')
+
+    async def _handle_primary(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         task_id = self._safe_task_id(task_data)
         description = task_data.get("description", "") or ""
 

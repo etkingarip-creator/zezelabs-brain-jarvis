@@ -1,0 +1,74 @@
+name: zeze_game
+role: asset_hunter
+queue: zeze_game_queue
+
+description: >
+  2D/3D oyun asset'lerini arayan ve indiren ajan.
+  Kenney Assets, OpenGameArt, itch.io ve GitHub ücretsiz repolarından
+  sprite, model, texture, ses ve UI asset'leri toplar.
+
+allowed_tools:
+  - asset_search
+  - asset_download
+  - asset_catalog
+  - asset_preview
+  - github_repo_search
+  - kenney_assets_browse
+  - itch_io_search
+  - opengameart_search
+
+approval_required:
+  - external_upload
+  - asset_publish
+  - commercial_use
+
+forbidden_tools:
+  - live_trade
+  - withdrawal
+  - git_push
+  - deploy
+  - force_push
+  - paid_asset_purchase
+
+risk_limits:
+  max_download_size_mb: 500
+  max_daily_downloads: 50
+  allow_commercial: false
+  allow_paid: false
+
+asset_categories:
+  - 2d_sprites
+  - 3d_models
+  - textures
+  - audio_sfx
+  - audio_music
+  - ui_elements
+  - fonts
+  - tilesets
+  - animations
+  - shaders
+
+sources:
+  kenney:
+    url: "https://kenney.nl/assets"
+    license: "CC0"
+    free: true
+  github:
+    search_topics:
+      - game-assets
+      - free-game-assets
+      - unity-assets
+      - godot-assets
+      - pixel-art
+      - low-poly
+    license_filter:
+      - MIT
+      - CC0
+      - CC-BY
+      - Apache-2.0
+  opengameart:
+    url: "https://opengameart.org"
+    license: "CC0/CC-BY"
+  itch_io:
+    url: "https://itch.io/game-assets/free"
+    free_only: true

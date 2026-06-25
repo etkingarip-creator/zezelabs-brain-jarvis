@@ -1,0 +1,11 @@
+{
+  "task_id": "b00be480-28a4-4340-87b2-e385845c4f37",
+  "department": "zeze_dev",
+  "timestamp": "2026-06-24T18:37:48.647986",
+  "query": "jarvis ZOM projesinin klasörünü yazar mısın",
+  "output": "# [L-MVHE Zero-Resource Fallback Response]\n# Warning: Both cloud and local Ollama are offline. Running semantic dry-run response.\nCompleted task: jarvis ZOM projesinin klasörünü yazar mısın\n\n[ÖNEM...\nResult: Success (Simulated locally via rule-based output).",
+  "status": "completed",
+  "trace_id": "07b8a5fa4bc2",
+  "risk_level": "low",
+  "hitl_rule_triggered": null
+}

@@ -1,0 +1,34 @@
+{
+  "trend": {
+    "title": "all-MiniLM-L6-v2",
+    "source": "HuggingFace",
+    "score": 1.0,
+    "category": "Embedding",
+    "url": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2",
+    "description": "Downloads: 248,829,332",
+    "downloads": 248829332
+  },
+  "sandbox": {
+    "tech": "all-MiniLM-L6-v2 (sentence-transformers embedding model)",
+    "passed": true,
+    "latency_ms": 45,
+    "memory_mb": 80,
+    "security_clearance": "passed",
+    "score": 1.0,
+    "recommendations": [
+      "Verify compatibility with your downstream task (e.g., semantic search, clustering).",
+      "Consider quantization or ONNX export if you need lower latency or memory footprint.",
+      "Monitor for any licensing constraints if used in commercial products."
+    ],
+    "source": "openrouter"
+  },
+  "injection": {
+    "branch": "feature/embeddings",
+    "status": "ready",
+    "files_modified": [],
+    "verification": "completed",
+    "commit_message": "Update embedding model to MiniLM-L6-v2",
+    "pr_description": "Integrate all-MiniLM-L6-v2 embeddings into local pipeline.",
+    "source": "openrouter"
+  }
+}

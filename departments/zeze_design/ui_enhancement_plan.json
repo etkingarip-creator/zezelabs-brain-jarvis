@@ -1,0 +1,156 @@
+{
+  "generated_at": "2026-05-27T00:42:40.948662",
+  "ui_repositories": {
+    "admin_one": {
+      "name": "Admin One React (Tailwind)",
+      "url": "https://github.com/justboil/admin-one-react-tailwind",
+      "stars": 589,
+      "tech_stack": [
+        "React",
+        "Next.js",
+        "Tailwind 4.x",
+        "TypeScript"
+      ],
+      "best_for": [
+        "Admin panels",
+        "Internal tools",
+        "SaaS dashboards"
+      ],
+      "license": "MIT"
+    },
+    "tailadmin": {
+      "name": "TailAdmin Free",
+      "url": "https://github.com/TailAdmin/free-react-tailwind-admin-dashboard",
+      "stars": 1165,
+      "tech_stack": [
+        "React",
+        "TypeScript",
+        "Tailwind CSS"
+      ],
+      "best_for": [
+        "MVPs",
+        "Multi-theme projects",
+        "Rapid prototyping"
+      ],
+      "license": "MIT"
+    },
+    "windmill": {
+      "name": "Windmill React UI",
+      "url": "https://github.com/estevanmaito/windmill-react-ui",
+      "stars": 753,
+      "tech_stack": [
+        "React",
+        "TypeScript",
+        "Tailwind CSS"
+      ],
+      "best_for": [
+        "Enterprise dashboards",
+        "Accessibility-first",
+        "Complex UIs"
+      ],
+      "license": "MIT"
+    }
+  },
+  "recommendation": {
+    "name": "Windmill React UI",
+    "url": "https://github.com/estevanmaito/windmill-react-ui",
+    "stars": 753,
+    "tech_stack": [
+      "React",
+      "TypeScript",
+      "Tailwind CSS"
+    ],
+    "best_for": [
+      "Enterprise dashboards",
+      "Accessibility-first",
+      "Complex UIs"
+    ],
+    "license": "MIT"
+  },
+  "roadmap": {
+    "short_term": [
+      {
+        "week": 1,
+        "goal": "Windmill React UI temel entegrasyonu",
+        "tasks": [
+          "Windmill component kütüphanesini incele",
+          "Temel UI componentlerini kopyala ve adapte et",
+          "Jarvis renk paleti ile tema özelleştirmesi yap",
+          "Basit layout yapısı oluştur"
+        ],
+        "output": "Temel Jarvis UI şablonu"
+      },
+      {
+        "week": 2,
+        "goal": "Jarvis-specific componentler",
+        "tasks": [
+          "Departman monitörü componenti oluştur",
+          "AI sohbeti arayüzü tasarla",
+          "Görev yöneticisi kanban boardu ekle",
+          "Gerçek zamanlı durum göstergeleri ekle"
+        ],
+        "output": "Jarvis özelleşmiş UI component seti"
+      }
+    ],
+    "medium_term": [
+      {
+        "week": 3,
+        "goal": "Gerçek zamanlı veri entegrasyonu",
+        "tasks": [
+          "WebSocket üzerinden canlı istatistik akışı",
+          "Departman performans grafikleri",
+          "AI model kullanım metrikleri",
+          "Sistem sağlık paneli"
+        ],
+        "output": "Canlı veri dashboard'u"
+      },
+      {
+        "week": 4,
+        "goal": "Gelişmiş özellikler",
+        "tasks": [
+          "Tema düzenleyici (light/dark/custom)",
+          "Kullanıcı tercihlerini öğrenen adaptif UI",
+          "Görev zamanlayıcı ve takvim entegrasyonu",
+          "Bildirim ve alert sistemi"
+        ],
+        "output": "Tam özellikli yönetim paneli"
+      }
+    ],
+    "long_term": [
+      {
+        "month": 2,
+        "goal": "Cross-platform genişletme",
+        "tasks": [
+          "Web uygulaması tamamla",
+          "Masaüstü istemcisi (PyQt5/Tkinter)",
+          "Mobil uygulama prototipi (Kivy/Flutter)",
+          "Platformlar arası veri senkronizasyonu"
+        ],
+        "output": "Çok platformlu Jarvis ekosistemi"
+      },
+      {
+        "month": 3,
+        "goal": "Kurumsal özellikler",
+        "tasks": [
+          "Rol tabanlı erişim kontrolü (RBAC)",
+          "Yetkilendirme ve izin sistemi",
+          "Denetim günlüğü ve raporlama",
+          "AI model marketi ve karşılaştırma aracı"
+        ],
+        "output": "Kurumsal Jarvis platformu"
+      }
+    ]
+  },
+  "implementation_steps": [
+    "1. Referans repoları incele ve tasarım ilkelerini öğren",
+    "2. Windmill React UI componentlerini Jarvis'e entegre et",
+    "3. Jarvis'in mevcut WebSocket ve API entegrasyonunu UI'ye bağla",
+    "4. Temel layout ve navigasyon yapısını oluştur",
+    "5. Departman spesifik componentler geliştir",
+    "6. Gerçek zamanlı veri akışı ve görselleştirmeyi ekle",
+    "7. Tema sistemi ve özelleştirme seçeneklerini uygula",
+    "8. Kullanıcı geri bildirim döngüsünü oluştur",
+    "9. Performans optimizasyonu ve erişilebilirlik testleri",
+    "10. Dokümantasyon ve kullanım kılavuzunu hazırla"
+  ]
+}

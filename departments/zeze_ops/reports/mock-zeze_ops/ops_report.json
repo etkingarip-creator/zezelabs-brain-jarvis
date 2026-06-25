@@ -1,0 +1,27 @@
+{
+  "task_id": "mock-zeze_ops",
+  "department": "zeze_ops",
+  "timestamp": "2026-06-25T13:01:02.127012",
+  "query": "Sistem denetimi",
+  "live_metrics": {
+    "cpu_percent": 16.5,
+    "memory_percent": 51.8,
+    "disk_percent": 45.3,
+    "process_count": 313
+  },
+  "optimization_plan": {
+    "bottlenecks": [
+      "yüksek_process_sayısı"
+    ],
+    "kpis": {
+      "hedef_cpu_percent": "≤ 15",
+      "hedef_memory_percent": "≤ 45",
+      "hedef_disk_percent": "≤ 40"
+    },
+    "action_items": [
+      "gereksiz_arka_plan_servislerini_kapat",
+      "process_sayısını_optimize_etmek_için_sunum_ve_yeniden_konfigüre_et"
+    ],
+    "priority": "medium"
+  }
+}

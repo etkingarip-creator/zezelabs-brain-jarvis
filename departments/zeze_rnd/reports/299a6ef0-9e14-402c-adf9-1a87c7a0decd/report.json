@@ -1,0 +1,11 @@
+{
+  "task_id": "299a6ef0-9e14-402c-adf9-1a87c7a0decd",
+  "department": "zeze_rnd",
+  "timestamp": "2026-06-20T23:53:33.036100",
+  "query": "test task description long",
+  "output": "llm output",
+  "status": "completed",
+  "trace_id": "d3a7ccaba074",
+  "risk_level": "low",
+  "hitl_rule_triggered": null
+}

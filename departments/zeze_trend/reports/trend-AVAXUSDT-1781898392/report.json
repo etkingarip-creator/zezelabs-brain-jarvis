@@ -1,0 +1,11 @@
+{
+  "task_id": "trend-AVAXUSDT-1781898392",
+  "department": "zeze_trend",
+  "timestamp": "2026-06-19T22:46:32.764849",
+  "query": "Analyze social and market sentiment for AVAXUSDT right now. Respond with a clear bullish/neutral/bearish verdict.",
+  "output": "# Simulated response for: Analyze social and market sent...\ndef generated_function():\n    pass\n",
+  "status": "completed",
+  "trace_id": "8af243e3a03d",
+  "risk_level": "low",
+  "hitl_rule_triggered": null
+}

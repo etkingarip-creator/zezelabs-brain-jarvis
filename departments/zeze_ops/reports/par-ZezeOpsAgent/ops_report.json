@@ -1,0 +1,13 @@
+{
+  "task_id": "par-ZezeOpsAgent",
+  "department": "zeze_ops",
+  "timestamp": "2026-06-25T18:31:14.175759",
+  "query": "Sistem operasyon denetimi",
+  "live_metrics": {
+    "cpu_percent": 20.9,
+    "memory_percent": 55.7,
+    "disk_percent": 45.4,
+    "process_count": 309
+  },
+  "optimization_plan": {}
+}

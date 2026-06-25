@@ -1,0 +1,11 @@
+{
+  "task_id": "b7dd7c52-4613-4b71-9866-76d270a7560a",
+  "department": "zeze_rnd",
+  "timestamp": "2026-06-22T02:13:55.034907",
+  "query": "test paper pdf",
+  "output": "Here is the report: [WARNING: PDF QUALITY LOW] output text...",
+  "status": "completed",
+  "trace_id": "b5aa4d5b522b",
+  "risk_level": "high",
+  "hitl_rule_triggered": "pdf_quality_low"
+}

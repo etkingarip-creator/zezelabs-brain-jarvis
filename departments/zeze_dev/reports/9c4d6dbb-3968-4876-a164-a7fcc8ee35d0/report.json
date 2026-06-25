@@ -1,0 +1,11 @@
+{
+  "task_id": "9c4d6dbb-3968-4876-a164-a7fcc8ee35d0",
+  "department": "zeze_dev",
+  "timestamp": "2026-06-19T22:48:01.996118",
+  "query": "öncelikli 3 görev belirle ilgili departmanları görevlendir departmanlar sekmesinde live akışı izlemek istiyorum",
+  "output": "# Simulated response for: öncelikli 3 görev belirle ilgi...\ndef generated_function():\n    pass\n",
+  "status": "completed",
+  "trace_id": "b8b753581dbb",
+  "risk_level": "low",
+  "hitl_rule_triggered": null
+}

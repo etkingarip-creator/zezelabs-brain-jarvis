@@ -1,0 +1,11 @@
+{
+  "task_id": "1920a701-0f62-47bf-a124-e271c642b5c0",
+  "department": "zeze_sec",
+  "timestamp": "2026-06-19T23:13:43.482462",
+  "query": "öncelikli 3 görev belirle ilgili departmanları görevlendir departmanlar sekmesinde live akışı izlemek istiyorum",
+  "output": "# [L-MVHE Zero-Resource Fallback Response]\n# Warning: Both cloud and local Ollama are offline. Running semantic dry-run response.\nCompleted task: öncelikli 3 görev belirle ilgili departmanları gör...\nResult: Success (Simulated locally via rule-based output).",
+  "status": "completed",
+  "trace_id": "452bfc33470e",
+  "risk_level": "low",
+  "hitl_rule_triggered": null
+}

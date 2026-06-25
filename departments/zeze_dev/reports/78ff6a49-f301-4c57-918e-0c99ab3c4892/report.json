@@ -1,0 +1,9 @@
+{
+  "task_id": "78ff6a49-f301-4c57-918e-0c99ab3c4892",
+  "department": "zeze_dev",
+  "timestamp": "2026-06-10T12:15:20.670959",
+  "query": "binance cüzdan kontrolü görevi ne oldu? cüzdan varlıklarını yaz",
+  "output": "[ÖNEMLİ REVİZYON TALEBİ!]\n\nBinance Cüzdan Kontrolü Görevi\n\n**Görev Tanımı:**\nBinance cüzdan kontrolü görevi, cüzdan varlıklarını listelemek ve bu varlıkların güncel fiyatlarını yazdırmak.\n\n**Yapılışı:**\n\n1. Binance API ile cüzdan varlıklarını listeleme:\n   ```python\nimport requests\n\n# API anahtarı\napi_key = \"API anahtarınız\"\n\n# Cüzdan ID\nwallet_id = \"Cüzdan ID\"\n\n# API URL\nurl = f\"https://api.binance.com/api/v3/account\"\n\n# API isteği\nheaders = {\n    \"X-MBX-APIKEY\": api_key,\n    \"X-MBX-SECRET-KEY\": \"Sifre\"\n}\n\nresponse = requests.get(url, headers=headers)\n\n# Cüzdan varlıklarını listeleme\ncuzdan_varlari = response.json()[\"balances\"]\n```\n",
+  "status": "completed",
+  "trace_id": "fb43603be355"
+}

@@ -1,0 +1,11 @@
+{
+  "task_id": "cov-1",
+  "department": "app_factory",
+  "timestamp": "2026-06-25T15:09:18.158927",
+  "query": "tamamen alakasiz xyz garip istek",
+  "output": "# Simulated response for: tamamen alakasiz xyz garip ist...\ndef generated_function():\n    pass\n",
+  "status": "completed",
+  "trace_id": "a6ade5c96980",
+  "risk_level": "low",
+  "hitl_rule_triggered": null
+}

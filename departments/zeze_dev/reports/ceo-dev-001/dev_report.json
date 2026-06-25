@@ -1,0 +1,12 @@
+{
+  "task_id": "ceo-dev-001",
+  "department": "zeze_dev",
+  "timestamp": "2026-06-25T03:09:05.660627",
+  "query": "Bir fibonacci(n) fonksiyonu yaz ve pytest testlerini ekle. fib(0)=0, fib(1)=1, fib(10)=55 olmali.",
+  "files": [
+    "departments/zeze_dev/workspace/ceo-dev-001/main.py",
+    "departments/zeze_dev/workspace/ceo-dev-001/test_main.py"
+  ],
+  "tests_passed": true,
+  "test_output": "=== STDOUT ===\n...                                                                      [100%]\n3 passed in 6.57s\n\n\nEXIT 0\n\nExit Code: 0"
+}

@@ -1,0 +1,11 @@
+{
+  "task_id": "c7d2f207-c31f-49b7-94ac-1f99b199f8b8",
+  "department": "zeze_dev",
+  "timestamp": "2026-06-24T18:01:26.140440",
+  "query": "bu saçma cevap ne:DEPARTMAN HAKKINDA KOD KALİTESİ RAPORU: apartman kod kalitesine yönelik genel analiz.",
+  "output": "# [L-MVHE Zero-Resource Fallback Response]\n# Warning: Both cloud and local Ollama are offline. Running semantic dry-run response.\nCompleted task: bu saçma cevap ne:DEPARTMAN HAKKINDA KOD KALİTESİ ...\nResult: Success (Simulated locally via rule-based output).",
+  "status": "completed",
+  "trace_id": "06d485bea211",
+  "risk_level": "low",
+  "hitl_rule_triggered": null
+}

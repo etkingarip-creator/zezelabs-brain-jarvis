@@ -19,6 +19,11 @@ class ZezeComplianceAgent(BaseDepartmentAgent):
         self.workspace_root = os.path.realpath(os.path.abspath(workspace_root))
 
     async def execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        # Görev-tipi kapsama: alan içi → uzman handler; tanınmazsa generic (needs_review)
+        routes = [(["uyum", "compliance", "kvkk", "gdpr", "yasal", "denetim", "politika", "risk", "mevzuat"], self._handle_primary)]
+        return await self.dispatch_by_task_type(task_data, routes, 'Sen ZezeLabs Uyumluluk ajanısın. KVKK/GDPR denetimi yaparsın.')
+
+    async def _handle_primary(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         task_id = self._safe_task_id(task_data)
         description = task_data.get("description", "") or ""
 

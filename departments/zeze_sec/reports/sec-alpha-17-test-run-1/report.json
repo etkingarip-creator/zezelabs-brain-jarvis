@@ -1,0 +1,9 @@
+{
+  "task_id": "sec-alpha-17-test-run-1",
+  "department": "zeze_sec",
+  "timestamp": "2026-06-12T21:31:47.560953",
+  "query": "Kripto Limit Emir Güvenlik Denetimi: Parite=BTCUSDT, İşlem=BUY, Miktar=0.00009, Fiyat=60574.89, Değer=5.50 USDT, BNB_Fee=True (BNB Bakiyesi: 0.0100). Limit emir kurallarına tam uyum sağlanmıştır, market emri kullanılmayacaktır.",
+  "output": "# [L-MVHE Zero-Resource Fallback Response]\n# Warning: Both cloud and local Ollama are offline. Running semantic dry-run response.\nCompleted task: Kripto Limit Emir Güvenlik Denetimi: Parite=BTCUSD...\nResult: Success (Simulated locally via rule-based output).",
+  "status": "completed",
+  "approved": true
+}

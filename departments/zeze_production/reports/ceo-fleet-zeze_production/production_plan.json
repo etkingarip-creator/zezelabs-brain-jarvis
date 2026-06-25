@@ -1,0 +1,45 @@
+{
+  "task_id": "ceo-fleet-zeze_production",
+  "department": "zeze_production",
+  "timestamp": "2026-06-25T03:37:05.425757",
+  "query": "Video icerik uretim plani",
+  "production_plan": {
+    "phases": [
+      {
+        "name": "Aşama: Planlama ve Scripting",
+        "duration_days": 3,
+        "deliverable": "Makale metni + storyboard"
+      },
+      {
+        "name": "Aşama: Ön Seviye Hazırlık (Pre-Production)",
+        "duration_days": 5,
+        "deliverable": "Düzen planlama ve ekip listesi"
+      }
+    ],
+    "quality_gates": [
+      {
+        "kontrol1": "Makale metni tamamlanır"
+      },
+      {
+        "kontrol2": "Storyboard hazırlanır"
+      },
+      {
+        "kontrol3": "Ekip listesi doğrulanır"
+      }
+    ],
+    "resources_needed": [
+      "AI render pipeline",
+      "Media production tools (ZezeLabs)",
+      "Human editor"
+    ],
+    "total_duration_days": 15,
+    "risk_factors": [
+      {
+        "description": "Yapay zeka render süreleri bozulacak"
+      },
+      {
+        "description": "Hızlı üretim kayıpları oluşabilir"
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "task_id": "test-task-123",
+  "department": "crypto_trading",
+  "timestamp": "2026-06-22T19:16:51.297493",
+  "query": "Bitcoin volatilite analizi yap ve 17 dolarlık işlem planla.",
+  "output": "# 📈 Alpha-17 Kasa Trading Raporu (ZezeLabs Standartları)\n \n## 1️⃣ Piyasa Değerlendirme ve Volatilite Analizi\n- **Analiz Edilen Parite:** BTCUSDT (Bitcoin / Tether)\n- **Son 24 Saatlik Ortalama Fiyat:** $100.00\n- **Son 24 Saatlik Fiyat Değişimi:** %+0.00 (BEARISH)\n- **Saatlik Fiyat Volatilitesi (StDev %):** %0.000\n- **Ortalama Saatlik Mum Genişliği (High-Low %):** %20.000\n- **Piyasa Yönü:** BEARISH\n \n## 2️⃣ Risk/Reward ve Kasa Durumu\n- **Kasa Bakiyesi (USDT):** 100.00 USDT (Talep Edilen: 17$, Gerçek: 100.00$)\n- **İşlem Tutarı (USDT):** 8.25 USDT\n- **BNB Komisyon İndirimi Durumu:** AKTİF (BNB Var) (BNB/LDBNB Toplam: 1.000000)\n- **Risk/Ödül Oranı:** 1.50 (Hedef Kar Al: %2.0, Durdur: %1.0)\n- **Komisyon Oranı Tasarrufu:** BNB indirimi ile %25 tasarruf sağlanmaktadır.\n \n## 2.5️⃣ Strateji Geçmiş Performans Analizi (Backtest - vectorbt)\n=== Backtest Sonuç Raporu (Motor: Pandas Fallback) ===\nParite: BTCUSDT | Periyot: 1h | Mum Sayısı: 100\nStrateji: SMA Crossover (Hızlı MA: 12, Yavaş MA: 26)\n- Toplam Getiri: %0.05\n- Maksimum Çekilme (Max DD): %1.89\n- Sharpe Oranı: 0.054\n- Toplam İşlem Sayısı: 1\n- Başarı Oranı (Win Rate): %100.00\n\n## 3️⃣ Güvenlik ve Uyumluluk Kontrolü (zeze_sec)\n- **Güvenlik Ajanı Onayı:** ✅ ONAYLANDI\n- **Audit Rapor Özeti:**\nSecurity check passed.\n \n## 4️⃣ Al-Sat İşlem Tetikleme Sonucu\n- **Emir Tipi:** LIMIT BUY (Market emir yasağına uyulmuştur)\n- **Emir Detayları:** 0.08333 BTCUSDT @ $99.00 (Piyasa fiyatının %5 altında maker emir)\n- **API Yanıtı:**\n```json\n{\n  \"orderId\": 123456,\n  \"status\": \"NEW\"\n}\n```\n",
+  "status": "completed",
+  "volatility_pct": 0.0,
+  "market_direction": "BEARISH",
+  "order_result": {
+    "orderId": 123456,
+    "status": "NEW"
+  },
+  "sec_approved": true,
+  "backtest_result": "=== Backtest Sonuç Raporu (Motor: Pandas Fallback) ===\nParite: BTCUSDT | Periyot: 1h | Mum Sayısı: 100\nStrateji: SMA Crossover (Hızlı MA: 12, Yavaş MA: 26)\n- Toplam Getiri: %0.05\n- Maksimum Çekilme (Max DD): %1.89\n- Sharpe Oranı: 0.054\n- Toplam İşlem Sayısı: 1\n- Başarı Oranı (Win Rate): %100.00"
+}

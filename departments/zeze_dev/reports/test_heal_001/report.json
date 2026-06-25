@@ -1,0 +1,11 @@
+{
+  "task_id": "test_heal_001",
+  "department": "zeze_dev",
+  "timestamp": "2026-06-22T19:16:57.253249",
+  "query": "SELF HEAL/DEBUG TASK:\nTarget file: core/ai/llm_client.py\nError trace: ValueError: api key not found\nGoal: Please read the target file, analyze the bug described in the error trace, write/modify code to fix the bug, and confirm the fix.",
+  "output": "Fix implemented",
+  "status": "completed",
+  "trace_id": "test_trace_id_123",
+  "risk_level": "low",
+  "hitl_rule_triggered": null
+}

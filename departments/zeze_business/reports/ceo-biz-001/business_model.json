@@ -1,0 +1,18 @@
+{
+  "task_id": "ceo-biz-001",
+  "department": "zeze_business",
+  "timestamp": "2026-06-25T03:20:34.333161",
+  "query": "AI destekli kod inceleme SaaS pazari icin TAM/SAM analizi",
+  "market_sources": "No search results found for: AI destekli kod inceleme SaaS pazari icin TAM/SAM analizi market size TAM competitors 2026",
+  "model": {
+    "tam_usd": 2850000000,
+    "sam_usd": 427500000,
+    "som_usd": 21375000,
+    "top_competitors": [
+      "GitHub Copilot",
+      "SonarQube"
+    ],
+    "growth_rate_pct": 32,
+    "strategic_recommendation": "Mevcut gerçek pazar verisi bulunmadığından muhafazakar tahminler yapılmıştır. AI destekli kod inceleme SaaS pazarı, genel yazılım pazarı ($65M milyar) ile AI otomasyonu artışı (%25-35 yıllık büyüme) üzerinden hesaplanmıştır. TAM, yapısal olarak tüm yazılım geliştirme araçları pazarıdır. SAM, kod kalite analizi ve otomatik düzeltme yapabilen araçlar olarak sınırlanmıştır. SOM, mevcut piyasada 5 büyük rekabetçi oyuncunun (<1%) ortam kazanma potansiyelidir. Stratejik öneri: İlk 12 ayda 0.5% piyasa payı hedefleyerek (~$21M) prototip geliştirme ve nicelik testi yap. Rekabet avantajı için şu odaklar belirlenmelidir: 1) Özel dil desteği (Türkçe dahil), 2) Entegre düzeltme özelliği, 3) Maliyetli kurumsal fiyatlandırma."
+  }
+}

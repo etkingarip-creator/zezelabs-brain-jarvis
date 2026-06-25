@@ -1,0 +1,30 @@
+[
+  {
+    "post_id": "6be8d3c9-0d81-4782-b21d-7ceb367dafe1",
+    "task_id": "fbb20c70-8828-48c6-8f2c-b7b537df71c5",
+    "platform": "youtube",
+    "title": "AI trendleri hakkında 60 saniyelik youtube short videosu haz",
+    "status": "published",
+    "published_at": "2026-06-22T19:17:10.080706",
+    "analytics": {
+      "views": 187,
+      "likes": 11,
+      "shares": 9,
+      "ctr": 3.98
+    }
+  },
+  {
+    "post_id": "4429575e-c559-445a-b2ff-0874f9974ebf",
+    "task_id": "fbb20c70-8828-48c6-8f2c-b7b537df71c5",
+    "platform": "tiktok",
+    "title": "AI trendleri hakkında 60 saniyelik youtube short videosu haz",
+    "status": "published",
+    "published_at": "2026-06-22T19:17:10.097687",
+    "analytics": {
+      "views": 280,
+      "likes": 28,
+      "shares": 14,
+      "ctr": 5.64
+    }
+  }
+]

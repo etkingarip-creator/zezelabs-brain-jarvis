@@ -1,0 +1,9 @@
+{
+  "task_id": "c4c84e4b-32d9-435f-8883-3ea67f3397bf",
+  "department": "crypto_trading",
+  "timestamp": "2026-06-10T12:17:16.680445",
+  "query": "binance cüzdan kontrolü görevi ne oldu? cüzdan varlıklarını yaz",
+  "output": "# [L-MVHE Zero-Resource Fallback Response]\n# Warning: Both cloud and local Ollama are offline. Running semantic dry-run response.\nCompleted task: binance cüzdan kontrolü görevi ne oldu? cüzdan var...\nResult: Success (Simulated locally via rule-based output).",
+  "status": "completed",
+  "trace_id": "8e297f3ff96b"
+}

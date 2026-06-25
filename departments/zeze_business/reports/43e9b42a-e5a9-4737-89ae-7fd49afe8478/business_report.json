@@ -1,0 +1,15 @@
+{
+  "task_id": "43e9b42a-e5a9-4737-89ae-7fd49afe8478",
+  "type": "general",
+  "status": "completed",
+  "timestamp": "2026-06-04T17:41:59.211884",
+  "description": "Merhaba Jarvis!",
+  "message": "İş analizi tamamlandı. Detaylı rapor oluşturuldu.",
+  "available_commands": [
+    "İş analizi yap",
+    "Strateji planı oluştur",
+    "Satış raporu hazırla",
+    "Finansal analiz yap",
+    "Pazar araştırması yap"
+  ]
+}

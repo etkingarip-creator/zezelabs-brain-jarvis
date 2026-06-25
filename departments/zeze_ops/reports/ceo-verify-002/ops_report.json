@@ -1,0 +1,30 @@
+{
+  "task_id": "ceo-verify-002",
+  "department": "zeze_ops",
+  "timestamp": "2026-06-25T00:55:10.065596",
+  "query": "Sistem operasyon durumunu denetle ve optimizasyon oner",
+  "live_metrics": {
+    "cpu_percent": 24.2,
+    "memory_percent": 50.9,
+    "disk_percent": 45.3,
+    "process_count": 318
+  },
+  "optimization_plan": {
+    "bottlenecks": [
+      "yüksek bellek kullanım oranı",
+      "yüksek proses sayısı"
+    ],
+    "kpis": {
+      "cpu_percent": "<30%",
+      "memory_percent": "<45%",
+      "disk_percent": "<50%",
+      "process_count": "<250"
+    },
+    "action_items": [
+      "örneklenmeyen veya uzun süren süreçleri inceleyerek gereksiz prosesleri sonlandır",
+      "hafıza sızıntısı olasılığı olan hizmetleri yeniden başlat ve konfigürasyonları optimize et",
+      "disk kullanımını izleyerek gereksiz dosyaları arşivle veya temizlik planı oluştur"
+    ],
+    "priority": "medium"
+  }
+}

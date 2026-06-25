@@ -1,0 +1,14 @@
+{
+  "task_id": "ceo-fleet-zeze_betting",
+  "department": "zeze_betting",
+  "timestamp": "2026-06-25T03:41:00.885016",
+  "bankroll": 26.82,
+  "accuracy_rate": 0.4615,
+  "coupons_generated": {
+    "safe_coupon": null,
+    "value_coupon": null
+  },
+  "output": "# ZezeBetting Nicel Bahis Tahmin ve Kupon Raporu\n\nTarih: 2026-06-25T03:41:00.884940\nKasa Durumu: $26.82 | Kâr/Zarar: $9.82\nTahmin Başarı Yüzdesi: %46.2 (Toplam 13 tahmin)\nDuygusal Kalkan Durumu: AKTİF (Tahminler Durduruldu)\n\n## 📊 Simüle Edilen Maç Analiz Detayları (Bivariate Poisson & Monte Carlo)\n\n",
+  "status": "completed",
+  "trace_id": "eee466d798d1"
+}

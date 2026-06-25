@@ -1,1 +1,3 @@
-# zeze_aro module
+# zeze_aro department
+from .agent import ZezeAroAgent
+__all__ = ['ZezeAroAgent']
