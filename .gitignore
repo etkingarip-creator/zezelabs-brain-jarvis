@@ -1,68 +1,19 @@
-
-node_modules/
-dist/
+*.log
+*.db
+# Ignore local environment files
 .env
-*.log
+# IDE / editor artefacts
+.vscode/
+.idea/
 __pycache__/
-.DS_Store
-standalone_jarvis/frontend/node_modules/
-frontend/node_modules/
-backend/venv/
-backend/__pycache__/
-*.exe
-.git_trash_*
-OLD_GIT_BACKUP_*
-OLD_GIT_BACKUP_DO_NOT_PUSH_965/
-
-# Nested repos (not submodules)
-Clawde_Code
-Clawde_Code/
-
-# Agent temporary workspaces
-zeze_eng/dev_workspace/task_*
-zeze_eng/dev_workspace/task_*/
-zeze_eng/dev_workspace/**/node_modules/
-zeze_eng/dev_workspace/**/.venv/
-zeze_eng/dev_workspace/**/__pycache__/
-zeze_eng/dev_workspace/**/dist/
-zeze_eng/dev_workspace/**/build/
-zeze_eng/dev_workspace/**/.cache/
-
-zeze_eng/dev_workspace/
-
-# AppFactory dry-run generated outputs
-app_factory/todo_saas/
-
-# Crypto paper_state outputs
-crypto_trading/paper_state/
-
-# Audit raw files
-docs/audits/raw/*.txt
-# Zeze ARO dogfood reports
-zeze_aro/dogfood_reports/
-
-# Generated tasks
-workspace/generated/
-
-# Media Factory dogfood reports
-media_factory/dogfood_reports/
-
-# Local Git backups / trash
-OLD_GIT_BACKUP_DO_NOT_PUSH*/
-.git_trash_*/
-
-# Generated workspaces
-dev_workspace/
-dev_workspace/task_*/
-zeze_eng/dev_workspace/task_*/
-
-# Runtime logs
+node_modules/
+# Runtime cruft & dev artefacts (hafifletme denetimi)
 logs/
-*.log
-backend/*.log
-
-# Department generated outputs
-app_factory/todo_saas/
-media_factory/dogfood_reports/
-zeze_aro/dogfood_reports/
-crypto_trading/paper_state/
+dist/
+*.pyc
+# Deney/referans — runtime dışı (324M)
+scratch/
+# Operasyonel olmayan ağır bağımlılık — sağlık kapısıyla devre dışı (202M)
+Clawde_Code/
+clawde_code/
+clawde_src/
