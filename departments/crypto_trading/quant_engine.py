@@ -100,6 +100,32 @@ def atr_stop_loss(entry: float, atr_value: float, side: str = "BUY", mult: float
     return round(entry + mult * atr_value, 6)
 
 
+def funding_signal(funding_rate: float) -> Dict:
+    """Perpetual funding rate yorumu — kriptonun yapısal edge'i.
+    funding_rate: anlık fonlama oranı (örn 0.0001 = %0.01/8saat).
+      + : long'lar short'lara öder → piyasa long-ağırlıklı (aşırıysa squeeze riski)
+      - : short'lar long'lara öder → piyasa short-ağırlıklı (long fırsatı olabilir)
+    Yıllık ~= rate * 3 * 365 (8 saatte bir)."""
+    annualized = round(funding_rate * 3 * 365 * 100, 2)
+    abs_r = abs(funding_rate)
+    if funding_rate > 0.0005:        # %0.05+ /8h → aşırı ısınmış long
+        bias = "aşırı long (squeeze riski)"
+        note = "Long açma riskli; delta-nötr funding-arb (spot al + perp short) cazip."
+    elif funding_rate > 0.00005:
+        bias = "long-ağırlıklı"
+        note = "Hafif long baskısı; trend long ise dikkatli devam."
+    elif funding_rate < -0.0005:     # aşırı negatif → short ısınmış
+        bias = "aşırı short (sıkışma fırsatı)"
+        note = "Short kalabalık; long squeeze/reversal fırsatı olabilir."
+    elif funding_rate < -0.00005:
+        bias = "short-ağırlıklı"
+        note = "Hafif short baskısı; reversal long aranabilir."
+    else:
+        bias = "nötr"
+        note = "Funding dengeli; yön sinyali zayıf."
+    return {"funding_rate": funding_rate, "annualized_pct": annualized, "bias": bias, "note": note}
+
+
 def evaluate_setup(entry: float, stop: float, target: float, balance_usd: float,
                    win_rate: float, adx_value: float, risk_pct: float = 0.01) -> Dict:
     """Tam setup değerlendirme — unicorn quant özeti. Reddetme kuralları dahil."""

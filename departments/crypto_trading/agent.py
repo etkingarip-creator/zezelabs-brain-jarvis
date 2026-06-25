@@ -564,14 +564,27 @@ class CryptoTradingAgent(BaseDepartmentAgent):
                     atr_v = _q.atr(highs, lows, closes); adx_v = _q.adx(highs, lows, closes)
                     regime = _q.market_regime(adx_v); price = closes[-1]
                     suggested_stop = _q.atr_stop_loss(price, atr_v, "BUY")
+                    # Funding rate (perpetual edge — kriptonun yapısal sinyali)
+                    funding_line = ""
+                    try:
+                        fr = await self.get_funding_rate(sym)
+                        if "lastFundingRate" in fr:
+                            fs = _q.funding_signal(fr["lastFundingRate"])
+                            funding_line = (
+                                f"- Funding: {fr['lastFundingRate']:.5f} (yıllık ~%{fs['annualized_pct']}) "
+                                f"→ {fs['bias']}. {fs['note']}\n"
+                            )
+                    except Exception:
+                        pass
                     quant_context = (
                         f"\n\n=== GERÇEK QUANT ANLIK-GÖRÜNTÜ ({sym}) ===\n"
                         f"- Güncel fiyat: {price}\n- ATR(14): {atr_v} (volatilite)\n"
                         f"- ADX(14): {adx_v} → Piyasa rejimi: {regime} "
                         f"({'momentum işlemine uygun' if regime=='trend' else 'range — momentum işlemi RİSKLİ' if regime=='range' else 'geçiş'})\n"
                         f"- ATR-tabanlı önerilen stop (long, 2×ATR): {suggested_stop}\n"
+                        f"{funding_line}"
                         f"Bu gerçek metrikleri kullan. Range rejiminde momentum işlemi önerme. "
-                        f"Stop'u ATR'ye göre belirle, sabit % kullanma."
+                        f"Stop'u ATR'ye göre belirle, sabit % kullanma. Funding aşırıysa squeeze riskini değerlendir."
                     )
         except Exception as _qe:
             self.logger.debug(f"quant snapshot skipped: {_qe}")
@@ -743,6 +756,22 @@ class CryptoTradingAgent(BaseDepartmentAgent):
         """Gets public historical klines from Binance (async)"""
         result = await self._binance_request("GET", "/api/v3/klines", {"symbol": symbol, "interval": interval, "limit": limit})
         return result if isinstance(result, list) else []
+
+    async def get_funding_rate(self, symbol: str = "BTCUSDT") -> dict:
+        """Perpetual funding rate (Binance Futures fapi premiumIndex) — public, auth gerekmez.
+        Döner: {lastFundingRate, markPrice} veya {error}."""
+        url = f"https://fapi.binance.com/fapi/v1/premiumIndex?symbol={symbol}"
+        timeout = aiohttp.ClientTimeout(total=10)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as resp:
+                    data = await resp.json(content_type=None)
+                    if isinstance(data, dict) and "lastFundingRate" in data:
+                        return {"lastFundingRate": float(data["lastFundingRate"]),
+                                "markPrice": float(data.get("markPrice", 0.0))}
+                    return {"error": str(data)[:120]}
+        except Exception as e:
+            return {"error": str(e)[:120]}
 
     async def place_binance_limit_order(self, order_params: dict) -> dict:
         """Places a signed limit order on Binance Spot (async). Falls back to paper trading if live is disabled or keys are missing."""
