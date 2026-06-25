@@ -64,12 +64,15 @@ async def _run_case(dept, module_path, cls_name, desc, runs, timeout):
     m = __import__(module_path, fromlist=[cls_name])
     AgentCls = getattr(m, cls_name)
     durations, ok, deliv, cov_miss, errors = [], 0, 0, 0, 0
+    import uuid as _uuid
     for i in range(runs):
         agent = AgentCls(workspace_root=".")
         t0 = time.time()
+        # Benzersiz task_id + açıklama varyasyonu: anti-loop/cache yanlış-pozitiflerini önle
+        nonce = _uuid.uuid4().hex[:6]
         try:
             r = await asyncio.wait_for(
-                agent.execute_task({"task_id": f"rel-{dept}-{i}", "description": desc}),
+                agent.execute_task({"task_id": f"rel-{dept}-{nonce}", "description": f"{desc} (vaka #{i+1})"}),
                 timeout=timeout,
             )
             durations.append(time.time() - t0)
