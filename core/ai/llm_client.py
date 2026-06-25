@@ -47,18 +47,20 @@ def get_local_model_for_department(agent_id: Optional[str]) -> str:
 
     agent_lower = agent_id.lower().strip()
 
+    # NOT: Sadece yerelde KURULU modeller eşlenir (offline garanti taban).
+    # Kurulu: qwen2.5-coder, llama3.1, qwen3.5:2b, phi3.
     # 1. Kodlama ve Mimari Ajanlar
     if agent_lower in ("zeze_dev", "app_factory", "zeze_design", "dev", "appfactory", "design"):
-        return "qwen2.5-coder"
-    # 2. Strateji ve Karar Verme / Güvenlik
+        return os.getenv("OLLAMA_MODEL_CODE", "qwen2.5-coder")
+    # 2. Strateji ve Karar Verme / Güvenlik (deepseek-r1 kurulu değil → llama3.1)
     elif agent_lower in ("zeze_business", "business", "business agent", "zeze_rnd", "rnd", "zeze_sec", "sec", "zeze_compliance", "compliance"):
-        return "deepseek-r1"
+        return os.getenv("OLLAMA_MODEL_REASON", "llama3.1")
     # 3. İstatistiksel Karar Verici
     elif agent_lower in ("zeze_betting", "betting"):
-        return "llama3.1"
-    # 4. Hızlı İşlem ve Veri Ayrıştırma (Media/Data)
+        return os.getenv("OLLAMA_MODEL_STAT", "llama3.1")
+    # 4. Hızlı İşlem ve Veri Ayrıştırma (Media/Data) (phi4 kurulu değil → phi3)
     elif agent_lower in ("zeze_media", "media_factory", "media_trend", "zeze_trend", "media", "data", "mediafactory", "trend"):
-        return "phi4"
+        return os.getenv("OLLAMA_MODEL_FAST_LOCAL", "phi3")
 
     # Varsayılan fallback
     return os.getenv("OLLAMA_MODEL", "qwen2.5-coder")
