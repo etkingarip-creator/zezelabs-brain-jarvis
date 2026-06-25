@@ -667,13 +667,28 @@ class JarvisZOMCore:
 
             total_tokens = 0
             total_cost = 0.0
+            roi_score = None
             try:
                 from core.zeze_guard.roi_tracker import ROITracker
-                costs = getattr(ROITracker().storage, "costs", []) or []
+                tracker = ROITracker()
+                costs = getattr(tracker.storage, "costs", []) or []
                 total_tokens = sum((c.get("tokens_in", 0) + c.get("tokens_out", 0)) for c in costs)
                 total_cost = sum(c.get("estimated_cost_usd", 0.0) for c in costs)
+                try:
+                    roi_score = tracker._calculate_base_metrics().get("roi_score")
+                except Exception:
+                    roi_score = None
             except Exception as _te:
                 logger.debug(f"telemetry token aggregation skipped: {_te}")
+
+            # GERÇEK sistem metrikleri (psutil); yoksa None
+            cpu_pct = ram_pct = None
+            try:
+                import psutil
+                cpu_pct = psutil.cpu_percent(interval=0.1)
+                ram_pct = psutil.virtual_memory().percent
+            except Exception:
+                pass
 
             tasks = self.task_history or []
             return {
@@ -683,6 +698,9 @@ class JarvisZOMCore:
                 "total_traces": t.get("total_traces", 0),
                 "total_tokens": total_tokens,
                 "total_cost_usd": round(total_cost, 4),
+                "roi_score": roi_score,
+                "cpu_percent": cpu_pct,
+                "ram_percent": ram_pct,
                 "active_tasks": sum(1 for x in tasks if x.get("status") == "queued"),
                 "completed_tasks": sum(1 for x in tasks if x.get("status") == "success"),
             }
