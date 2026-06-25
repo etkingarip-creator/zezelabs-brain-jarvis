@@ -337,8 +337,9 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         }
         
         # 5. Ask LLM to generate response or fallback to mock
-        # Yerel 7B'de tool-loop (5 döngü) çok yavaş → konsept/metin için plain ask_llm + 2 retry
-        max_retries = 2
+        # Yerel 7B'de tool-loop yavaş → plain ask_llm. Ağır dept (search+critic) →
+        # tek geçiş yeterli (outer revision kapalı), gecikme yarıya iner.
+        max_retries = 1
         llm_response = ""
         current_description = goal
 
@@ -769,7 +770,9 @@ class MediaFactoryAgent(BaseDepartmentAgent):
             "success": agent_res.success,
             "report_path": report_path,
             "task_id": task_id,
-            "output": agent_res.output
+            "output": agent_res.output,
+            "artifacts": [report_path],
+            "deliverable": bool(agent_res.success and agent_res.output and len(str(agent_res.output).strip()) >= 40),
         }
 
     async def run_cycle(self) -> Dict[str, Any]:
