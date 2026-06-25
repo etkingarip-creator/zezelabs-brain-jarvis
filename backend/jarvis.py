@@ -1400,9 +1400,14 @@ class JarvisZOMCore:
                 payload["department"] = target_dept
                 ctx_update: dict = payload.get("context") or {}
                 if pipeline:
-                    # pipeline = collaboration_needed depts (IntelligentRouter'dan)
-                    ctx_update["pipeline"] = pipeline
-                    ctx_update["collaboration_depts"] = pipeline
+                    # Anlamsal ayrım (paralel çok-ajan atılımı):
+                    #  - WORKFLOW → sıralı pipeline (çıktı bir sonrakine besler)
+                    #  - TASK + işbirliği → paralel collaboration_depts (bağımsız, aynı anda)
+                    # Önceden ikisi de set ediliyordu → aynı dept iki kez çalışıyordu (giderildi).
+                    if intent == "WORKFLOW":
+                        ctx_update["pipeline"] = pipeline
+                    else:
+                        ctx_update["collaboration_depts"] = pipeline
                 payload["context"] = ctx_update
                 
                 success = False
@@ -2698,19 +2703,48 @@ SADECE GEÇERLİ BİR JSON DÖNDÜR, başka hiçbir metin ekleme.'''
                                 )
                                 await self.autonomous_collaborator.start_collaboration(collab.id)
 
+                                collab_outputs: dict[str, str] = {}
+
                                 async def _run_collab_dept(cdept: str, collab_id: str):
                                     c_agent = self.agents.get(cdept)
                                     if not c_agent or not hasattr(c_agent, "execute_task"):
                                         await self.autonomous_collaborator.update_subtask(collab_id, cdept, "failed", error="agent not found")
+                                        collab_outputs[cdept] = "_(ajan bulunamadı)_"
                                         return
                                     try:
                                         c_result = await c_agent.execute_task({**t_data, "task_id": str(uuid.uuid4()), "skip_outer_revision": True})
-                                        await self.autonomous_collaborator.update_subtask(collab_id, cdept, "completed", result=c_result.get("output", ""))
+                                        out = c_result.get("output", "") or ""
+                                        await self.autonomous_collaborator.update_subtask(collab_id, cdept, "completed", result=out)
+                                        collab_outputs[cdept] = out
                                     except Exception as ce:
                                         await self.autonomous_collaborator.update_subtask(collab_id, cdept, "failed", error=str(ce))
+                                        collab_outputs[cdept] = f"_(hata: {ce})_"
 
                                 await asyncio.gather(*[_run_collab_dept(d, collab.id) for d in collab_depts], return_exceptions=True)
                                 logger.info(f"[Collaboration] {collab.id} tamamlandı: {collab_depts}")
+
+                                # Paralel sonuçları KULLANICIYA göster (atılımın asıl değeri):
+                                # her departmanın katkısını birleştirip ek bir mesaj yayınla.
+                                if collab_outputs:
+                                    parts = [f"### 🤝 Paralel Departman Katkıları\n"]
+                                    for cd in collab_depts:
+                                        prof = self.department_registry.get(cd)
+                                        dname = prof.display_name if prof else cd
+                                        snippet = (collab_outputs.get(cd, "") or "")[:600]
+                                        parts.append(f"**{dname}:**\n{snippet}\n")
+                                    collab_summary = "\n".join(parts)
+                                    collab_envelope = {
+                                        "task_id": str(uuid.uuid4()),
+                                        "client_id": c_id,
+                                        "sender": "collaboration",
+                                        "status": "completed",
+                                        "department": t_dept,
+                                        "departments": collab_depts,
+                                        "result": {"success": True, "output": collab_summary, "deliverable": True},
+                                        "completed_at": datetime.now().isoformat(),
+                                    }
+                                    self._schedule_broadcast(collab_envelope)
+                                    self._add_to_history(c_id, "assistant", collab_summary, task_id=collab_envelope["task_id"], department=t_dept)
                             except Exception as ce:
                                 logger.warning(f"[Collaboration] paralel yürütme hatası: {ce}")
 
