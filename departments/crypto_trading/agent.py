@@ -361,11 +361,20 @@ class CryptoTradingAgent(BaseDepartmentAgent):
                 if match:
                     win_rate = float(match.group(1))
                     
+            # Q1 OVERFIT KAPISI: backtest 'GÜVENİLMEZ' dediyse gerçek emir GÖNDERME
+            if backtest_res and "GÜVENİLMEZ" in str(backtest_res):
+                self.logger.warning(f"[{task_id}] Backtest overfit hükmü GÜVENİLMEZ — işlem iptal.")
+                return {
+                    "success": False,
+                    "error": "Backtest overfit/regime guard: strateji out-of-sample'da güvenilmez. Gerçek para riske atılmadı.",
+                    "backtest_result": backtest_res,
+                }
+
             # Scale order value dynamically based on backtest performance
             base_order_val = 5.50
             performance_multiplier = max(0.5, min(1.5, win_rate / 50.0))
             order_val = round(base_order_val * performance_multiplier, 2)
-            
+
             # Check Daily Drawdown Circuit Breaker
             if await self.is_drawdown_circuit_breaker_active():
                 self.logger.warning(f"[{task_id}] Daily Drawdown Circuit Breaker is active. Aborting trade.")
@@ -375,7 +384,31 @@ class CryptoTradingAgent(BaseDepartmentAgent):
                 }
                 
             qty = round(order_val / limit_price, 5)
-            
+
+            # P1 PORTFÖY RİSK KAPISI: yeni pozisyon portföy ısısı/beta tavanını aşıyor mu?
+            # Açık pozisyonların riskini (locked_holdings + holdings) topla, BTC-beta kümelenmesini engelle.
+            try:
+                from departments.crypto_trading import quant_engine as _q
+                _pf = await self._load_portfolio()
+                _bal = float(_pf.get("balance_usd", 0.0)) + float(_pf.get("locked_balance_usd", 0.0))
+                _open = []
+                _allh = {**_pf.get("holdings", {}), **_pf.get("locked_holdings", {})}
+                for _s, _q2 in _allh.items():
+                    if _q2 and _q2 > 0:
+                        # her açık pozisyonun riskini ~%2 stop varsayımıyla kabaca tahmin et
+                        _open.append({"risk_usd": abs(_q2) * limit_price * 0.02 if _s == symbol else _bal * 0.01,
+                                      "beta": 1.0})
+                _new_risk = order_val * 0.02  # bu emrin ~%2 stop riski
+                _pr = _q.portfolio_risk_check(_open, _bal if _bal > 0 else order_val * 10, new_risk_usd=_new_risk)
+                if not _pr["approved"]:
+                    self.logger.warning(f"[{task_id}] P1 portföy riski: {_pr['rejection_reasons']}")
+                    return {
+                        "success": False,
+                        "error": f"Portföy risk kapısı: {'; '.join(_pr['rejection_reasons'])} (heat %{_pr['portfolio_heat_pct']}). Gerçek para korundu.",
+                    }
+            except Exception as _pe:
+                self.logger.debug(f"P1 portfolio gate skipped: {_pe}")
+
             # Bakiye ve BNB kontrolü
             account_info = await self.get_binance_account_info()
             usdt_balance = 0.0
