@@ -160,6 +160,96 @@ class CryptoTradingAgent(BaseDepartmentAgent):
             return
         await self.record_pnl_for_circuit_breaker(-loss_amount)
 
+    async def simulate_snowball(self, symbol: str = "BTCUSDT", interval: str = "1h",
+                                limit: int = 500, start_equity: float = 5.0,
+                                min_notional: float = 10.0, fee_rate: float = 0.00075,
+                                slippage: float = 0.0005, fast: int = 12, slow: int = 26) -> Dict:
+        """PAPER PROOF: gerçek kline'larla snowball compounding'i simüle eder.
+        $5'ten başlar, fee+slippage+min-notional-farkında, equity-scaled sizing + kâr kilitleme.
+        Dürüst yörüngeyi (gerçek getiri/gün, min-notional bekleme sayısı) raporlar — kanıt olmadan gerçek para yok."""
+        from departments.crypto_trading import quant_engine as _q
+        kl = await self.get_binance_klines(symbol, interval, limit)
+        if not isinstance(kl, list) or len(kl) < slow + 5:
+            return {"error": f"Yetersiz veri ({symbol})"}
+        closes = [float(k[4]) for k in kl]
+        n = len(closes)
+
+        def sma(arr, p, i):
+            if i + 1 < p:
+                return None
+            return sum(arr[i + 1 - p:i + 1]) / p
+
+        equity = start_equity
+        protected = 0.0  # kilitlenmiş kâr (çekirdek)
+        in_pos = False
+        entry_px = 0.0
+        qty = 0.0
+        trades = 0
+        wins = 0
+        skips_min_notional = 0
+        peak = equity
+        max_dd = 0.0
+
+        for i in range(slow, n):
+            f_now, s_now = sma(closes, fast, i), sma(closes, slow, i)
+            f_prev, s_prev = sma(closes, fast, i - 1), sma(closes, slow, i - 1)
+            if None in (f_now, s_now, f_prev, s_prev):
+                continue
+            price = closes[i]
+            golden = f_prev <= s_prev and f_now > s_now   # al
+            death = f_prev >= s_prev and f_now < s_now    # sat
+
+            if not in_pos and golden:
+                stop = price * 0.98  # %2 stop (snowball: küçük risk)
+                sz = _q.snowball_position_size(equity, price, stop, min_notional=min_notional, risk_pct=0.5)
+                if not sz["can_trade"]:
+                    skips_min_notional += 1
+                    continue
+                qty = sz["notional_usd"] / (price * (1 + slippage))
+                entry_px = price * (1 + slippage)
+                equity -= sz["notional_usd"] * fee_rate  # giriş fee
+                in_pos = True
+            elif in_pos and death:
+                exit_px = price * (1 - slippage)
+                gross = qty * (exit_px - entry_px)
+                fee = qty * exit_px * fee_rate
+                pnl = gross - fee
+                equity += pnl
+                lock = _q.profit_lock(pnl, lock_pct=0.3)
+                protected += max(0.0, lock["locked"])
+                trades += 1
+                if pnl > 0:
+                    wins += 1
+                in_pos = False
+            total_eq = equity + protected
+            peak = max(peak, total_eq)
+            if peak > 0:
+                max_dd = max(max_dd, (peak - total_eq) / peak)
+
+        final_eq = round(equity + protected, 4)
+        days = (n * (60 if interval.endswith("m") else 1)) / 24 if interval.endswith("h") else n / 24
+        # kaba gün: 1h × n mum / 24
+        if interval.endswith("h"):
+            days = n / 24.0
+        elif interval.endswith("d"):
+            days = float(n)
+        else:
+            days = n / (24.0 * 60)
+        total_ret = (final_eq - start_equity) / start_equity if start_equity > 0 else 0.0
+        daily_rate = ((final_eq / start_equity) ** (1 / days) - 1) if days > 0 and final_eq > 0 and start_equity > 0 else 0.0
+        proj30 = _q.compounding_projection(start_equity, daily_rate, 30)["final"]
+        eta_2000 = _q.days_to_target(start_equity, 2000.0, daily_rate)
+
+        return {
+            "symbol": symbol, "interval": interval,
+            "start_equity": start_equity, "final_equity": final_eq, "protected_core": round(protected, 4),
+            "total_return_pct": round(total_ret * 100, 2),
+            "sim_days": round(days, 1), "realized_daily_rate_pct": round(daily_rate * 100, 4),
+            "trades": trades, "win_rate_pct": round(wins / trades * 100, 1) if trades else 0.0,
+            "min_notional_skips": skips_min_notional, "max_drawdown_pct": round(max_dd * 100, 2),
+            "projection_30d": proj30, "eta_days_to_2000": eta_2000,
+        }
+
     async def get_live_performance(self, symbol: str = None) -> Dict[str, Any]:
         """P3 — canlı işlem defterinden gerçek win-rate (alpha-decay tespiti için)."""
         portfolio = await self._load_portfolio()

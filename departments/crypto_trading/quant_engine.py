@@ -257,6 +257,55 @@ def twap_slices(total_qty: float, n_slices: int = 4) -> List[float]:
     return slices
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# SNOWBALL COMPOUNDING MOTORU — küçük sermayeyi fee/min-notional-farkında büyüt
+# ──────────────────────────────────────────────────────────────────────────
+
+def snowball_position_size(equity: float, entry: float, stop: float,
+                           min_notional: float = 10.0, risk_pct: float = 0.02,
+                           max_equity_frac: float = 0.95) -> Dict:
+    """Compounding pozisyon: hesapla birlikte BÜYÜR (equity-scaled). min-notional altındaysa
+    işlem yapma (biriktir). Binance MIN_NOTIONAL ~$10 → küçük hesabın yapısal duvarı."""
+    risk_per_unit = abs(entry - stop)
+    if risk_per_unit <= 0 or entry <= 0 or equity <= 0:
+        return {"qty": 0.0, "notional_usd": 0.0, "can_trade": False, "reason": "geçersiz girdi"}
+    qty = (equity * risk_pct) / risk_per_unit
+    notional = qty * entry
+    if notional > equity * max_equity_frac:  # sermayeyi aşma
+        notional = equity * max_equity_frac
+        qty = notional / entry
+    if notional < min_notional:
+        return {"qty": 0.0, "notional_usd": round(notional, 2), "can_trade": False,
+                "reason": f"notional ${notional:.2f} < min ${min_notional:.0f} — biriktir/bekle"}
+    return {"qty": round(qty, 8), "notional_usd": round(notional, 2), "can_trade": True, "reason": "ok"}
+
+
+def profit_lock(realized_pnl: float, lock_pct: float = 0.3) -> Dict:
+    """Kâr kilitleme: her kârın bir kısmı 'korunmuş çekirdek'e, kalanı çalışır sermayeye
+    reinvest. Snowball'u korur — kâr geri verilmez, çekirdek büyür."""
+    if realized_pnl <= 0:
+        return {"locked": 0.0, "reinvest": round(realized_pnl, 4)}
+    locked = realized_pnl * max(0.0, min(1.0, lock_pct))
+    return {"locked": round(locked, 4), "reinvest": round(realized_pnl - locked, 4)}
+
+
+def compounding_projection(start: float, daily_rate: float, days: int) -> Dict:
+    """Compounding yörünge — gerçekçi günlük oran ile büyüme eğrisi + hedefe ETA."""
+    eq = start
+    curve = []
+    for _ in range(max(0, days)):
+        eq *= (1 + daily_rate)
+        curve.append(round(eq, 2))
+    return {"final": round(eq, 2), "multiple": round(eq / start, 2) if start > 0 else 0.0, "curve": curve}
+
+
+def days_to_target(start: float, target: float, daily_rate: float) -> int:
+    """Hedefe gerçekçi gün sayısı (verilen günlük oranla). Kullanıcıya dürüst ETA."""
+    if start <= 0 or target <= start or daily_rate <= 0:
+        return -1
+    return math.ceil(math.log(target / start) / math.log(1 + daily_rate))
+
+
 def evaluate_setup(entry: float, stop: float, target: float, balance_usd: float,
                    win_rate: float, adx_value: float, risk_pct: float = 0.01) -> Dict:
     """Tam setup değerlendirme — unicorn quant özeti. Reddetme kuralları dahil."""
