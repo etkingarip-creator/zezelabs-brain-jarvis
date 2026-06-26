@@ -3,6 +3,7 @@ Zezelabs Holding OS - AppFactoryAgent
 Gerçek LLM Entegrasyonlu Ajan
 """
 import os
+import re
 import json
 import time
 from typing import Dict, Any, Optional
@@ -109,8 +110,9 @@ class AppFactoryAgent(BaseDepartmentAgent):
             f"Senden aşağıdaki 4 dosyayı üretmeni rica ediyorum:\n"
             f"1. README.md: Projenin açıklaması, kurulum ve çalıştırma yönergeleri.\n"
             f"2. manifest.json: Projenin metaverileri (isim, sürüm, bağımlılıklar).\n"
-            f"3. app/main.py: FastAPI veya benzeri bir framework ile yazılmış ana uygulama kodu.\n"
-            f"4. tests/test_smoke.py: Uygulamanın düzgün çalışıp çalışmadığını kontrol eden basit bir test.\n\n"
+            f"3. app/main.py: SADECE Python STANDART KÜTÜPHANE (http.server vb.) — harici paket (fastapi/flask) KULLANMA. "
+            f"Saf, test edilebilir fonksiyonlar (örn. health()→dict) + /health endpoint'i + config'i os.getenv'den oku (secret gömme).\n"
+            f"4. tests/test_smoke.py: HARİCİ BAĞIMLILIK OLMADAN (pytest+stdlib) GEÇECEK test. app.main'den saf fonksiyonları import edip doğrula.\n\n"
             f"Lütfen yanıtı SADECE aşağıdaki JSON formatında döndür. Markdown kod blokları veya açıklama ekleme, sadece saf JSON:\n"
             f"{{\n"
             f"  \"README.md\": \"dosya içeriği buraya\",\n"
@@ -141,17 +143,23 @@ class AppFactoryAgent(BaseDepartmentAgent):
                 self.logger.warning(f"Failed to parse JSON response: {e}. Using templates.")
                 
         required_files = ["README.md", "manifest.json", "app/main.py", "tests/test_smoke.py"]
+        # HEP-YA-HİÇ TUTARLILIK: herhangi bir dosya eksik/geçersiz/syntax-hatalıysa, LLM+fallback
+        # KARIŞIMI uyumsuz app üretir (LLM main.py + fallback test → import uyuşmazlığı). O yüzden
+        # tek bir dosya bile bozuksa TÜM seti tutarlı stdlib fallback'ten kur.
+        use_fallback = False
         for rf in required_files:
-            if rf not in files or not isinstance(files[rf], str) or len(files[rf].strip()) == 0:
-                files[rf] = self._get_fallback_template(rf, goal)
-                
+            if rf not in files or not isinstance(files[rf], str) or not files[rf].strip():
+                use_fallback = True
+                break
+            if not self._validate_code_syntax(rf, files[rf]):
+                use_fallback = True
+                break
+        if use_fallback:
+            self.logger.warning(f"[{task_id}] LLM çıktısı eksik/geçersiz → tutarlı stdlib fallback seti kullanılıyor.")
+            files = {rf: self._get_fallback_template(rf, goal) for rf in required_files}
+
         tool_results = []
         for rel_path, content in files.items():
-            # Code validation syntax check before saving
-            if not self._validate_code_syntax(rel_path, content):
-                self.logger.warning(f"Generated file {rel_path} failed syntax check. Reverting to fallback template.")
-                content = self._get_fallback_template(rel_path, goal)
-                
             abs_path = os.path.join(scaffold_dir, rel_path)
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             with open(abs_path, "w", encoding="utf-8") as f:
@@ -173,15 +181,55 @@ class AppFactoryAgent(BaseDepartmentAgent):
         except Exception as e:
             self.logger.error(f"Failed to record telemetry: {e}")
             
-        self.logger.info(f"[{task_id}] Scaffold generated successfully in {scaffold_dir}")
-        
+        # F1 — GERÇEK DOĞRULAMA: app'i çalıştır (syntax+import+pytest). Sahte-yeşil YASAK.
+        verify = self._verify_scaffold(scaffold_dir)
+        success = verify["verified"]
+        self.logger.info(f"[{task_id}] Scaffold doğrulama: {verify['status']} (verified={success})")
+
         return AgentResult(
             task_id=task_id,
             department=DepartmentName.APP_FACTORY,
-            success=True,
-            output=f"Scaffold successfully created for goal: {goal}",
+            success=success,
+            output=(f"Scaffold for '{goal}' — DOĞRULAMA: {verify['status']}. "
+                    f"{'✅ Çalışır (test geçti)' if success else '⚠️ ' + verify['detail']}"),
             tool_results=tool_results
         )
+
+    def _verify_scaffold(self, scaffold_dir: str) -> Dict[str, Any]:
+        """F1 — üretilen app GERÇEKTEN çalışıyor mu? syntax → import → pytest.
+        verified=True SADECE pytest gerçek-yeşilse. Eksik bağımlılık 'çalışmadı' değil ayrı sınıf."""
+        import subprocess
+        import sys as _sys
+        # 1. syntax: tüm .py
+        for dp, _, files in os.walk(scaffold_dir):
+            for fn in files:
+                if fn.endswith(".py"):
+                    try:
+                        import py_compile
+                        py_compile.compile(os.path.join(dp, fn), doraise=True)
+                    except Exception as e:
+                        return {"verified": False, "status": "SYNTAX_FAIL", "detail": f"{fn}: {e}"}
+        # 2. pytest (gerçek çalıştırma)
+        try:
+            r = subprocess.run([_sys.executable, "-m", "pytest", "-q", scaffold_dir],
+                               capture_output=True, text=True, timeout=120, cwd=scaffold_dir)
+            raw = (r.stdout + "\n" + r.stderr)
+        except Exception as e:
+            return {"verified": False, "status": "TEST_ÇALIŞMADI", "detail": str(e)[:200]}
+        low = raw.lower()
+        # eksik bağımlılık → dürüstçe 'doğrulanamadı' (başarısızlık değil ayrı sınıf)
+        if "modulenotfounderror" in low or "no module named" in low:
+            mod = re.search(r"no module named ['\"]([\w\.]+)", low)
+            return {"verified": False, "status": "BAĞIMLILIK_EKSİK",
+                    "detail": f"Eksik paket: {mod.group(1) if mod else '?'} (pip install gerekli)"}
+        passed = int((re.search(r"(\d+) passed", raw) or [0, 0])[1]) if re.search(r"(\d+) passed", raw) else 0
+        failed = int((re.search(r"(\d+) failed", raw) or [0, 0])[1]) if re.search(r"(\d+) failed", raw) else 0
+        errors = int((re.search(r"(\d+) error", raw) or [0, 0])[1]) if re.search(r"(\d+) error", raw) else 0
+        if passed > 0 and failed == 0 and errors == 0:
+            return {"verified": True, "status": "ÇALIŞIR", "detail": f"{passed} test geçti"}
+        if "no tests ran" in low or (passed == 0 and failed == 0 and errors == 0):
+            return {"verified": False, "status": "TEST_YOK", "detail": "geçen test yok (gerçek-yeşil değil)"}
+        return {"verified": False, "status": "TEST_FAIL", "detail": f"passed={passed} failed={failed} errors={errors}"}
 
     def _validate_code_syntax(self, filename: str, content: str) -> bool:
         """Validates syntax of generated files (Python, JSON, etc.) before saving."""
@@ -202,13 +250,50 @@ class AppFactoryAgent(BaseDepartmentAgent):
         return True
 
     def _get_fallback_template(self, filename: str, goal: str) -> str:
-        """Returns default high-quality file contents for scaffolding fallback based on goal keywords."""
+        """STDLIB-ONLY fallback: harici bağımlılık YOK → gerçekten çalışır ve test GEÇER (F1
+        doğrulanabilir). FastAPI fallback'i doğrulanamıyordu (deps_missing). Bağımsız + sağlık
+        endpoint'i + config/secret ayrımı (uzmanlık paketi prensibi)."""
+        if filename == "README.md":
+            return (
+                f"# {goal}\n\nZezeLabs AppFactory tarafından üretildi (stdlib-only, bağımlılıksız).\n\n"
+                f"## Çalıştırma\n```bash\npython -m app.main   # http://localhost:8000\n```\n"
+                f"## Test\n```bash\npytest -q\n```\n## Sağlık\n`GET /health` → {{\"status\":\"ok\"}}\n")
+        if filename == "manifest.json":
+            return json.dumps({"name": "zezelabs-scaffold", "version": "1.0.0",
+                               "description": f"{goal}", "runtime": "python-stdlib",
+                               "dependencies": {}, "entrypoint": "app/main.py",
+                               "endpoints": ["/", "/health"]}, indent=2, ensure_ascii=False)
+        if filename == "app/main.py":
+            return (
+                "import os\nimport json\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\n\n"
+                "# config/secret ayrımı (uzmanlık prensibi): env'den oku, kod gömme\n"
+                "CONFIG = {\"port\": int(os.getenv(\"PORT\", \"8000\")),\n"
+                "          \"app_name\": os.getenv(\"APP_NAME\", " + repr(goal) + ")}\n\n"
+                "def health() -> dict:\n    \"\"\"Sağlık kontrolü — saf, test edilebilir.\"\"\"\n"
+                "    return {\"status\": \"ok\", \"app\": CONFIG[\"app_name\"]}\n\n"
+                "def root() -> dict:\n    return {\"message\": \"ZezeLabs scaffold çalışıyor\", \"app\": CONFIG[\"app_name\"]}\n\n"
+                "class Handler(BaseHTTPRequestHandler):\n"
+                "    def do_GET(self):\n"
+                "        payload = health() if self.path == \"/health\" else root()\n"
+                "        body = json.dumps(payload).encode()\n"
+                "        self.send_response(200)\n"
+                "        self.send_header(\"Content-Type\", \"application/json\")\n"
+                "        self.end_headers()\n        self.wfile.write(body)\n\n"
+                "def run():\n    HTTPServer((\"\", CONFIG[\"port\"]), Handler).serve_forever()\n\n"
+                "if __name__ == \"__main__\":\n    run()\n")
+        if filename == "tests/test_smoke.py":
+            return (
+                "import os, sys\nsys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))\n"
+                "from app.main import health, root\n\n"
+                "def test_health():\n    assert health()[\"status\"] == \"ok\"\n\n"
+                "def test_root():\n    assert \"message\" in root()\n")
+        return ""
+
+    def _get_fallback_template_legacy(self, filename: str, goal: str) -> str:
+        """(Eski FastAPI şablonları — referans; varsayılan stdlib fallback kullanılıyor.)"""
         goal_lower = goal.lower()
-        
-        # Determine language/stack:
         is_react = "react" in goal_lower or "nextjs" in goal_lower or "frontend" in goal_lower
         is_go = "go" in goal_lower or "golang" in goal_lower
-        
         if is_react:
             if filename == "README.md":
                 return (
