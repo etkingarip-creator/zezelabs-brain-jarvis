@@ -400,14 +400,19 @@ class MediaFactoryAgent(BaseDepartmentAgent):
 
         # N1 — THUMBNAIL + TITLE CTR (ASIL kaldıraç: başarının >%50'si, CTR<%3 → raf)
         ctr = None
+        _ledger_path = os.path.join(self.workspace_root, "departments", self.department, "reports", "performance_ledger.json")
         if task_type in ("video", "youtube_short", "youtube_long", "content", "reel", "tiktok", "shorts"):
             try:
                 from departments.media_factory.ctr_engine import score_title, score_thumbnail_concept
+                from departments.media_factory import flywheel as _fw
                 import json as _json
+                # O3 — FLYWHEEL: kendi verisinden kazanan paternleri üretime enjekte et
+                _brief = _fw.winning_brief(_fw.learn_winning_patterns(_fw.load_ledger(_ledger_path)))
                 ct_resp = await self.ask_llm(
                     prompt=f"'{goal}' videosu için 4 yüksek-CTR başlık + 1 thumbnail konsept tarifi ver. "
                            f"Başlıklar merak+sayı+güç-kelime içersin, <65 karakter. SADECE JSON: "
-                           f'{{"titles":["...","...","...","..."],"thumbnail":"konsept tarifi"}}',
+                           f'{{"titles":["...","...","...","..."],"thumbnail":"konsept tarifi"}}'
+                           + (f"\n\n{_brief}" if _brief else ""),
                     system_prompt="Sen YouTube CTR uzmanısın. Tıklatan başlık+thumbnail tasarlarsın (thumbnail başarının yarısından fazlası).")
                 titles, thumb = [], ""
                 try:
@@ -424,6 +429,18 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                        "thumbnail_fixes": ts.get("fixes", []),
                        "ctr_ready": best[0] >= 60 and ts["score"] >= 75}
                 self.logger.info(f"[{task_id}] CTR: title={best[0]} thumb={ts['score']} ready={ctr['ctr_ready']}")
+                # O1 — FLYWHEEL: bu videonun özelliklerini + (proxy) performansını deftere kaydet.
+                # Gerçek YouTube analitiği geldiğinde retention_pct/conversion_pct güncellenir.
+                try:
+                    _niche = (goal.split()[0].lower() if goal.split() else "genel")
+                    _fw.record_performance(_ledger_path, {
+                        "task_id": task_id, "goal": goal[:80], "niche": _niche,
+                        "title": best[1], "title_features": _fw.classify_title_features(best[1]),
+                        "hook_type": (viral.get("checks", {}) and "hook" or "n/a") if viral else "n/a",
+                        "title_ctr": best[0], "thumb_ctr": ts["score"],
+                        "retention_pct": 0, "conversion_pct": 0})  # gerçek metrik API ile dolacak
+                except Exception:
+                    pass
             except Exception as _ce:
                 self.logger.debug(f"ctr scoring skipped: {_ce}")
 
