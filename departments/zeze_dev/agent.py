@@ -103,8 +103,46 @@ class ZezeDevAgent(BaseDepartmentAgent):
                     return hits
         return hits
 
+    def _ast_symbol_search(self, name: str, root: str, max_files: int = 200) -> list:
+        """D2 — AST YAPISAL arama: fonksiyon/sınıf tanımını metin değil sözdizimi ağacından bul.
+        Metin grep'in aksine tam tanım konumu + gövde döner (isabetli bağlam)."""
+        import ast as _ast
+        found = []
+        scanned = 0
+        for dirpath, _, files in os.walk(root):
+            if any(s in dirpath for s in ("__pycache__", ".git", "node_modules")):
+                continue
+            for fn in files:
+                if not fn.endswith(".py"):
+                    continue
+                fp = os.path.join(dirpath, fn)
+                scanned += 1
+                if scanned > max_files:
+                    return found
+                try:
+                    with open(fp, encoding="utf-8", errors="ignore") as f:
+                        src = f.read()
+                    tree = _ast.parse(src)
+                except Exception:
+                    continue
+                lines = src.splitlines()
+                for node in _ast.walk(tree):
+                    if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)) and node.name == name:
+                        end = getattr(node, "end_lineno", node.lineno)
+                        seg = "\n".join(lines[node.lineno - 1:end])
+                        found.append({"path": fp, "lineno": node.lineno, "end_lineno": end,
+                                      "kind": type(node).__name__, "segment": seg[:2000]})
+        return found
+
+    def _make_diff(self, old: str, new: str, path: str) -> str:
+        """D3 — birleşik (unified) diff üret (şeffaf değişiklik kaydı)."""
+        import difflib
+        return "".join(difflib.unified_diff(
+            old.splitlines(keepends=True), new.splitlines(keepends=True),
+            fromfile=f"a/{path}", tofile=f"b/{path}"))
+
     def _surgical_edit(self, path: str, old: str, new: str) -> Dict:
-        """Yerinde cerrahi düzenleme. old_string benzersiz olmalı; değilse reddet (güvenlik)."""
+        """Yerinde cerrahi düzenleme + D3 backup/diff. old_string benzersiz olmalı; değilse reddet."""
         if not old or not os.path.exists(path):
             return {"ok": False, "reason": "geçersiz path/old_string"}
         try:
@@ -117,12 +155,31 @@ class ZezeDevAgent(BaseDepartmentAgent):
             return {"ok": False, "reason": "old_string dosyada yok"}
         if count > 1:
             return {"ok": False, "reason": f"old_string {count} kez var (benzersiz değil)"}
+        new_content = content.replace(old, new, 1)
+        diff = self._make_diff(content, new_content, path)
         try:
+            with open(path + ".bak", "w", encoding="utf-8") as f:  # D3 geri-alma yedeği
+                f.write(content)
             with open(path, "w", encoding="utf-8") as f:
-                f.write(content.replace(old, new, 1))
-            return {"ok": True}
+                f.write(new_content)
+            return {"ok": True, "diff": diff, "backup": path + ".bak"}
         except Exception as e:
             return {"ok": False, "reason": f"yazılamadı: {e}"}
+
+    def _undo_edit(self, path: str) -> bool:
+        """D3 — son düzenlemeyi geri al (.bak'tan). Test bozulursa otomatik rollback."""
+        bak = path + ".bak"
+        if not os.path.exists(bak):
+            return False
+        try:
+            with open(bak, encoding="utf-8") as f:
+                content = f.read()
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.remove(bak)
+            return True
+        except Exception:
+            return False
 
     async def _handle_issue(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """ISSUE-ÇÖZME — gerçek SWE pipeline'ı: codebase'i ARA → ANLA → CERRAHI DÜZELT → TEST → SELF-HEAL.
@@ -160,7 +217,7 @@ class ZezeDevAgent(BaseDepartmentAgent):
             return {"success": False, "task_id": task_id,
                     "output": f"Issue için ilgili dosya bulunamadı (terimler: {terms}).", "deliverable": False}
 
-        # 2. UNDERSTAND: aday dosyaları oku
+        # 2. UNDERSTAND: aday dosyaları oku + D2 AST yapısal bağlam (terim bir sembolse tam tanımı)
         file_ctx = ""
         for fp in ranked:
             try:
@@ -168,6 +225,10 @@ class ZezeDevAgent(BaseDepartmentAgent):
                     file_ctx += f"\n\n### DOSYA: {fp}\n{f.read()[:3000]}"
             except Exception:
                 pass
+        for term in terms[:3]:
+            for sym in self._ast_symbol_search(term, search_root)[:2]:
+                file_ctx += (f"\n\n### AST SEMBOL: {sym['kind']} '{term}' @ {sym['path']}:{sym['lineno']}\n"
+                             f"{sym['segment']}")
 
         # 3+4+5. EDIT → TEST → SELF-HEAL (cerrahi düzenleme, 3 deneme)
         applied = []
@@ -193,7 +254,6 @@ class ZezeDevAgent(BaseDepartmentAgent):
             if not res["ok"]:
                 test_output = f"Edit uygulanamadı: {res['reason']}"
                 continue
-            applied.append({"path": path, "explanation": edit.get("explanation", "")})
 
             # TEST: ilgili dizinde pytest (varsa) + syntax kontrolü
             runner = (
@@ -204,9 +264,17 @@ class ZezeDevAgent(BaseDepartmentAgent):
                 "print(r.stdout[-1500:]); print('EXIT', r.returncode)"
             )
             test_output = str(await registry.execute_tool("python_executor", {"code": runner}))
-            if "SYNTAX OK" in test_output and ("EXIT 0" in test_output or "no tests ran" in test_output.lower() or ("passed" in test_output.lower() and "failed" not in test_output.lower())):
+            passed = "SYNTAX OK" in test_output and ("EXIT 0" in test_output or "no tests ran" in test_output.lower() or ("passed" in test_output.lower() and "failed" not in test_output.lower()))
+            if passed:
+                applied.append({"path": path, "explanation": edit.get("explanation", ""), "diff": res.get("diff", "")[:800]})
+                if os.path.exists(path + ".bak"):
+                    os.remove(path + ".bak")  # başarı → yedeği temizle
                 success = True
                 break
+            else:
+                # D3 OTOMATİK ROLLBACK: test bozulduysa düzenlemeyi geri al (repo temiz kalsın)
+                self._undo_edit(path)
+                self.logger.warning(f"[{task_id}] Test başarısız → rollback (deneme {attempt+1}).")
 
         report_dir = os.path.join(self.workspace_root, "departments", self.department, "reports", task_id)
         os.makedirs(report_dir, exist_ok=True)
