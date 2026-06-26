@@ -375,6 +375,29 @@ class MediaFactoryAgent(BaseDepartmentAgent):
             except Exception as _ve:
                 self.logger.debug(f"virality scoring skipped: {_ve}")
 
+        # MONETİZASYON PAKETİ — affiliate-öncelikli açıklama + sabit yorum (faceless gelir stratejisi)
+        monetization = None
+        if task_type in ("video", "youtube_short", "youtube_long", "content", "reel", "tiktok", "shorts"):
+            try:
+                from departments.media_factory.monetization_engine import monetization_stack
+                import json as _json
+                tools_resp = await self.ask_llm(
+                    prompt=f"'{goal}' videosunda gösterilecek/önerilecek 2-4 GERÇEK affiliate-uygun araç (AI/SaaS) ver. "
+                           f"SADECE JSON: {{\"tools\":[{{\"name\":\"araç\",\"commission\":\"%X\"}}]}}",
+                    system_prompt="Sen affiliate uzmanısın. Yüksek-komisyonlu, recurring, niş-uygun araçlar seçersin.")
+                tools = []
+                try:
+                    m = re.search(r'\{.*\}', tools_resp, re.DOTALL)
+                    if m:
+                        tools = _json.loads(m.group(0)).get("tools", [])
+                except Exception:
+                    pass
+                if not tools:
+                    tools = [{"name": "Synthesia", "commission": "%25/12ay"}, {"name": "Jasper AI"}]
+                monetization = monetization_stack(goal, tools, setup_guide_url="(kanal rehberi linki)")
+            except Exception as _me:
+                self.logger.debug(f"monetization skipped: {_me}")
+
         # 6. Generate output files based on task type
         state_dir = os.path.join(self.workspace_root, "departments", self.department, "reports", task_id)
         os.makedirs(state_dir, exist_ok=True)
@@ -678,11 +701,22 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                      f"viral_ready={viral['viral_ready']}"
                      + ("\n⚠️ İyileştir: " + "; ".join(viral['fixes'][:3]) if viral.get('fixes') and not viral['viral_ready'] else "")) \
             if viral else ""
+        # Monetizasyon paketini dosyala + çıktıya ekle
+        mon_out = ""
+        if monetization:
+            mon_path = os.path.join(state_dir, "monetization.md")
+            with open(mon_path, "w", encoding="utf-8") as f:
+                f.write(f"# Monetizasyon Paketi (affiliate-öncelikli)\n\n## Açıklama\n{monetization['description']}\n\n"
+                        f"## Sabit Yorum\n{monetization['pinned_comment']}\n\n## Sıra\n{monetization['layer_order']}\n"
+                        f"\n## Strateji\n{monetization['strategy']}")
+            created_files.append(mon_path)
+            mon_out = (f"\n\n💰 MONETİZASYON (asıl gelir = açıklama, AdSense en son):\n"
+                       f"{monetization['pinned_comment']}\n→ Tam paket: monetization.md")
         return AgentResult(
             task_id=task_id,
             success=True,
             department=self.department,
-            output=llm_response + viral_out,
+            output=llm_response + viral_out + mon_out,
             tool_results=[{
                 "task_id": task_id,
                 "type": task_type,
@@ -690,6 +724,7 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                 "policy_checks": policy_checks,
                 "published_posts": published_posts,
                 "virality": viral,
+                "monetization": monetization,
             }],
             error=None
         )
