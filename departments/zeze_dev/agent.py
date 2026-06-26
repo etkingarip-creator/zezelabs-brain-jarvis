@@ -181,6 +181,75 @@ class ZezeDevAgent(BaseDepartmentAgent):
         except Exception:
             return False
 
+    def _ast_find_references(self, name: str, root: str, max_files: int = 300) -> list:
+        """E3 — call-graph: bir sembolün ÇAĞIRANLARINI/referanslarını bul. İmza değişince
+        hangi dosyaların güncellenmesi gerektiğini gösterir (çok-dosya koordinasyonu)."""
+        import ast as _ast
+        refs = []
+        scanned = 0
+        for dirpath, _, files in os.walk(root):
+            if any(s in dirpath for s in ("__pycache__", ".git", "node_modules")):
+                continue
+            for fn in files:
+                if not fn.endswith(".py"):
+                    continue
+                fp = os.path.join(dirpath, fn)
+                scanned += 1
+                if scanned > max_files:
+                    return refs
+                try:
+                    with open(fp, encoding="utf-8", errors="ignore") as f:
+                        src = f.read()
+                    tree = _ast.parse(src)
+                except Exception:
+                    continue
+                lines = src.splitlines()
+                for node in _ast.walk(tree):
+                    hit = False
+                    if isinstance(node, _ast.Call):
+                        fnc = node.func
+                        if (isinstance(fnc, _ast.Name) and fnc.id == name) or \
+                           (isinstance(fnc, _ast.Attribute) and fnc.attr == name):
+                            hit = True
+                    if hit:
+                        ln = getattr(node, "lineno", 0)
+                        refs.append({"path": fp, "lineno": ln,
+                                     "line": lines[ln - 1].strip() if 0 < ln <= len(lines) else ""})
+        return refs
+
+    def _run_tests(self, scope_paths: list, timeout: int = 120) -> Dict:
+        """E1+E2 — DÜRÜST test koşucu. Tam-suite regresyon kapsamı. 'no tests ran' BAŞARI DEĞİL.
+        Döner: {syntax_ok, passed, failed, errors, no_tests, real_green, raw}."""
+        import subprocess
+        import sys as _sys
+        # syntax kontrolü (değişen .py dosyaları)
+        syntax_ok = True
+        for p in scope_paths:
+            if p.endswith(".py") and os.path.exists(p):
+                try:
+                    import py_compile
+                    py_compile.compile(p, doraise=True)
+                except Exception:
+                    syntax_ok = False
+        # pytest: kapsamdaki dizinler (regresyon)
+        dirs = sorted({os.path.dirname(p) if p.endswith(".py") else p for p in scope_paths if p})
+        dirs = [d for d in dirs if d and os.path.isdir(d)] or ["."]
+        try:
+            r = subprocess.run([_sys.executable, "-m", "pytest", "-q", *dirs],
+                               capture_output=True, text=True, timeout=timeout)
+            raw = (r.stdout + "\n" + r.stderr)[-2500:]
+        except Exception as e:
+            return {"syntax_ok": syntax_ok, "passed": 0, "failed": 0, "errors": 1,
+                    "no_tests": False, "real_green": False, "raw": f"pytest çalışmadı: {e}"}
+        passed = int((re.search(r"(\d+) passed", raw) or [0, 0])[1]) if re.search(r"(\d+) passed", raw) else 0
+        failed = int((re.search(r"(\d+) failed", raw) or [0, 0])[1]) if re.search(r"(\d+) failed", raw) else 0
+        errors = int((re.search(r"(\d+) error", raw) or [0, 0])[1]) if re.search(r"(\d+) error", raw) else 0
+        no_tests = "no tests ran" in raw.lower() or (passed == 0 and failed == 0 and errors == 0)
+        # GERÇEK YEŞİL: syntax + en az 1 geçen test + sıfır fail/error. 'no tests' YEŞİL DEĞİL.
+        real_green = syntax_ok and passed > 0 and failed == 0 and errors == 0
+        return {"syntax_ok": syntax_ok, "passed": passed, "failed": failed, "errors": errors,
+                "no_tests": no_tests, "real_green": real_green, "raw": raw}
+
     async def _handle_issue(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """ISSUE-ÇÖZME — gerçek SWE pipeline'ı: codebase'i ARA → ANLA → CERRAHI DÜZELT → TEST → SELF-HEAL.
         Greenfield üreteç değil; mevcut kodda issue çözer (frontier standardı). Native, köprüye bağımsız."""
@@ -225,56 +294,88 @@ class ZezeDevAgent(BaseDepartmentAgent):
                     file_ctx += f"\n\n### DOSYA: {fp}\n{f.read()[:3000]}"
             except Exception:
                 pass
+        # E3 — call-graph: aday sembollerin ÇAĞIRANLARINI bul (çok-dosya koordinasyonu)
+        ref_ctx = ""
+        ref_files = set()
         for term in terms[:3]:
             for sym in self._ast_symbol_search(term, search_root)[:2]:
                 file_ctx += (f"\n\n### AST SEMBOL: {sym['kind']} '{term}' @ {sym['path']}:{sym['lineno']}\n"
                              f"{sym['segment']}")
+            refs = self._ast_find_references(term, search_root)[:8]
+            for r in refs:
+                ref_files.add(r["path"])
+                ref_ctx += f"\n- {r['path']}:{r['lineno']}  {r['line']}"
+        if ref_ctx:
+            file_ctx += f"\n\n### ÇAĞIRANLAR (imza değişirse bunları da güncelle):{ref_ctx}"
 
-        # 3+4+5. EDIT → TEST → SELF-HEAL (cerrahi düzenleme, 3 deneme)
+        # 3+4+5. EDIT(ÇOK-DOSYA) → DÜRÜST REGRESYON TESTİ → SELF-HEAL → TOPLU ROLLBACK
         applied = []
-        test_output = ""
+        last = {"raw": ""}
         success = False
+        # regresyon kapsamı: aday + çağıran dosyaların dizinleri (E2 — sadece tek klasör değil)
+        regression_scope = list(dict.fromkeys(ranked + list(ref_files)))
         for attempt in range(3):
             edit_prompt = (
                 f"ISSUE: {description}\n\nİLGİLİ KOD:{file_ctx}\n\n"
-                f"Issue'yu çözen CERRAHI düzenlemeyi ver. old_string DOSYADA BİREBİR var olmalı (yeterince "
-                f"benzersiz, 3-8 satır). SADECE JSON: "
-                f'{{"path": "dosya yolu", "old_string": "değişecek tam blok", "new_string": "yeni blok", "explanation": "neden"}}'
-                + (f"\n\n[ÖNCEKI DENEME BAŞARISIZ: {test_output[:600]}]" if attempt else "")
+                f"Issue'yu çözen CERRAHI düzenleme(ler)i ver. İmza/davranış değişiyorsa ÇAĞIRANLARI da "
+                f"aynı anda güncelle (çok-dosya). Her old_string ilgili dosyada BİREBİR + benzersiz olmalı.\n"
+                f"SADECE JSON: {{\"edits\": [{{\"path\": \"...\", \"old_string\": \"...\", \"new_string\": \"...\", \"explanation\": \"...\"}}]}}"
+                + (f"\n\n[ÖNCEKI DENEME BAŞARISIZ: {last['raw'][:700]}]" if attempt else "")
             )
-            edit_resp = await self.ask_llm(edit_prompt, system_prompt="Sen kıdemli mühendissin. Minimal, doğru, cerrahi düzeltme yaparsın. Bütün dosyayı değil, gereken satırları değiştirirsin.")
+            edit_resp = await self.ask_llm(edit_prompt, system_prompt="Sen kıdemli mühendissin. Minimal, cerrahi, çok-dosya tutarlı düzeltme yaparsın. Bütün dosyayı değil gereken satırları değiştirirsin; imza değişince çağıranları da güncellersin.")
             try:
-                edit = json.loads(re.search(r'\{.*\}', edit_resp, re.DOTALL).group(0))
+                edits = json.loads(re.search(r'\{.*\}', edit_resp, re.DOTALL).group(0)).get("edits", [])
             except Exception:
                 continue
-            path = edit.get("path", "")
-            if not path or not os.path.exists(path):
-                path = ranked[0]
-            res = self._surgical_edit(path, edit.get("old_string", ""), edit.get("new_string", ""))
-            if not res["ok"]:
-                test_output = f"Edit uygulanamadı: {res['reason']}"
+            if not edits:
+                continue
+            # tüm edit'leri uygula (her biri backup'lı)
+            this_round = []
+            ok_all = True
+            for ed in edits:
+                p = ed.get("path", "")
+                if not p or not os.path.exists(p):
+                    continue
+                res = self._surgical_edit(p, ed.get("old_string", ""), ed.get("new_string", ""))
+                if res["ok"]:
+                    this_round.append({"path": p, "explanation": ed.get("explanation", ""), "diff": res.get("diff", "")[:600]})
+                    if p not in regression_scope:
+                        regression_scope.append(p)
+                else:
+                    ok_all = False
+                    last["raw"] = f"Edit uygulanamadı ({p}): {res['reason']}"
+            if not this_round:
                 continue
 
-            # TEST: ilgili dizinde pytest (varsa) + syntax kontrolü
-            runner = (
-                "import subprocess, sys, py_compile\n"
-                f"try:\n    py_compile.compile({path!r}, doraise=True)\n    print('SYNTAX OK')\n"
-                "except Exception as e:\n    print('SYNTAX FAIL', e)\n"
-                f"r = subprocess.run([sys.executable, '-m', 'pytest', '-q', {os.path.dirname(path)!r}], capture_output=True, text=True, timeout=90)\n"
-                "print(r.stdout[-1500:]); print('EXIT', r.returncode)"
-            )
-            test_output = str(await registry.execute_tool("python_executor", {"code": runner}))
-            passed = "SYNTAX OK" in test_output and ("EXIT 0" in test_output or "no tests ran" in test_output.lower() or ("passed" in test_output.lower() and "failed" not in test_output.lower()))
-            if passed:
-                applied.append({"path": path, "explanation": edit.get("explanation", ""), "diff": res.get("diff", "")[:800]})
-                if os.path.exists(path + ".bak"):
-                    os.remove(path + ".bak")  # başarı → yedeği temizle
+            # E1+E2 — DÜRÜST regresyon testi (geniş kapsam, 'no tests ran' YEŞİL DEĞİL)
+            last = self._run_tests(regression_scope)
+            if last["real_green"]:
+                applied = this_round
+                for e in this_round:  # başarı → yedekleri temizle
+                    if os.path.exists(e["path"] + ".bak"):
+                        os.remove(e["path"] + ".bak")
                 success = True
                 break
+            elif last["syntax_ok"] and last["failed"] == 0 and last["errors"] == 0 and last["no_tests"]:
+                # TESTSİZ: edit muhtemelen doğru ama KANITLANAMAZ. Geri alma — KORU ama 'çözüldü' deme.
+                applied = this_round  # uygulandı (doğrulanamadı)
+                self.logger.warning(f"[{task_id}] Düzenleme uygulandı ama doğrulayacak test yok (deneme {attempt+1}).")
+                break
             else:
-                # D3 OTOMATİK ROLLBACK: test bozulduysa düzenlemeyi geri al (repo temiz kalsın)
-                self._undo_edit(path)
-                self.logger.warning(f"[{task_id}] Test başarısız → rollback (deneme {attempt+1}).")
+                # GERÇEK KIRILMA (fail/error/syntax): TOPLU ROLLBACK → repo temiz + regresyonsuz
+                for e in this_round:
+                    self._undo_edit(e["path"])
+                self.logger.warning(f"[{task_id}] Regresyon/test FAIL → toplu rollback (deneme {attempt+1}). "
+                                    f"passed={last['passed']} failed={last['failed']} errors={last['errors']}")
+
+        test_output = last.get("raw", "")
+        # E1 — DÜRÜST durum: real_green değilse 'çözüldü' DEME
+        if success:
+            verdict = f"✅ ÇÖZÜLDÜ ({last['passed']} test geçti, 0 fail — regresyon kapsamı: {len(regression_scope)} dizin)"
+        elif last.get("no_tests") and applied:
+            verdict = "⚠️ DÜZENLEME YAPILDI AMA DOĞRULANAMADI (ilgili test yok — gerçek-yeşil değil, çözüldü DENMEZ)"
+        else:
+            verdict = f"❌ ÇÖZÜLEMEDİ (test geçmedi/edit tutmadı; passed={last.get('passed',0)} failed={last.get('failed',0)})"
 
         report_dir = os.path.join(self.workspace_root, "departments", self.department, "reports", task_id)
         os.makedirs(report_dir, exist_ok=True)
@@ -285,13 +386,16 @@ class ZezeDevAgent(BaseDepartmentAgent):
 
         output = (
             f"# Issue Çözüm Raporu\n\n**Issue:** {description}\n\n"
-            f"**Arama terimleri:** {terms}\n**Aday dosyalar:** {ranked}\n\n"
+            f"**Arama terimleri:** {terms}\n**Aday dosyalar:** {ranked}\n"
+            f"**Çağıran dosyalar (E3):** {sorted(ref_files) or 'yok'}\n\n"
             f"**Uygulanan düzenlemeler ({len(applied)}):**\n"
             + "\n".join(f"- `{a['path']}`: {a['explanation']}" for a in applied)
-            + f"\n\n**Sonuç:** {'✅ ÇÖZÜLDÜ (syntax+test geçti)' if success else '⚠️ Doğrulanamadı'}\n\n```\n{test_output[-600:]}\n```"
+            + f"\n\n**Sonuç:** {verdict}\n\n```\n{test_output[-600:]}\n```"
         )
+        # E1 — DÜRÜST: success = SADECE gerçek-yeşil (doğrulanmış). deliverable = edit uygulandı mı.
         return {"success": success, "task_id": task_id, "output": output,
-                "artifacts": [a["path"] for a in applied], "deliverable": len(applied) > 0}
+                "artifacts": [a["path"] for a in applied],
+                "verified": success, "deliverable": bool(applied)}
 
     async def _handle_review(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """Code review handler: yapılandırılmış inceleme raporu üretir."""
