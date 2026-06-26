@@ -90,6 +90,9 @@ def revenue_projection(weekly_views: List[int], view_to_sale_pct: float = 0.3,
         "total_usd": round(cumulative, 2),
         "assumptions": f"izlenme→satış %{view_to_sale_pct}, satış başı ${avg_commission_usd}"
                        f"{' (recurring)' if recurring else ''}",
-        "disclaimer": "Projeksiyon — garanti değil. Gerçek sonuç niş/CTR/dönüşüme bağlı; "
-                      "istikrarlı tırmanış hedefle, tek video patlamasına güvenme.",
+        "disclaimer": "İYİMSER ÜST-SINIR senaryosu — garanti DEĞİL. SERT GERÇEK: yeni faceless "
+                      "kanalların ÇOĞU ilk 1-3 ay ~$0 yapar (CTR<%3 → algoritma test etmez, "
+                      "izlenme gelmez). Bu sayılar ANCAK niş+thumbnail+tutarlılık tutarsa geçerli. "
+                      "Önce CTR'ı (thumbnail/title) çöz; gelir onun SONUCU.",
+        "realistic_floor": "İlk ay büyük olasılıkla $0-50 (indeksleme + ilk izlenmeler).",
     }

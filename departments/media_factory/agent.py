@@ -398,6 +398,35 @@ class MediaFactoryAgent(BaseDepartmentAgent):
             except Exception as _me:
                 self.logger.debug(f"monetization skipped: {_me}")
 
+        # N1 — THUMBNAIL + TITLE CTR (ASIL kaldıraç: başarının >%50'si, CTR<%3 → raf)
+        ctr = None
+        if task_type in ("video", "youtube_short", "youtube_long", "content", "reel", "tiktok", "shorts"):
+            try:
+                from departments.media_factory.ctr_engine import score_title, score_thumbnail_concept
+                import json as _json
+                ct_resp = await self.ask_llm(
+                    prompt=f"'{goal}' videosu için 4 yüksek-CTR başlık + 1 thumbnail konsept tarifi ver. "
+                           f"Başlıklar merak+sayı+güç-kelime içersin, <65 karakter. SADECE JSON: "
+                           f'{{"titles":["...","...","...","..."],"thumbnail":"konsept tarifi"}}',
+                    system_prompt="Sen YouTube CTR uzmanısın. Tıklatan başlık+thumbnail tasarlarsın (thumbnail başarının yarısından fazlası).")
+                titles, thumb = [], ""
+                try:
+                    j = _json.loads(re.search(r'\{.*\}', ct_resp, re.DOTALL).group(0))
+                    titles = j.get("titles", []); thumb = j.get("thumbnail", "")
+                except Exception:
+                    pass
+                scored = sorted(((score_title(t)["score"], t) for t in titles if t), reverse=True)
+                best = scored[0] if scored else (0, goal)
+                ts = score_thumbnail_concept(thumb)
+                ctr = {"best_title": best[1], "title_ctr_score": best[0],
+                       "thumbnail_concept": thumb, "thumbnail_ctr_score": ts["score"],
+                       "title_fixes": score_title(best[1]).get("fixes", []),
+                       "thumbnail_fixes": ts.get("fixes", []),
+                       "ctr_ready": best[0] >= 60 and ts["score"] >= 75}
+                self.logger.info(f"[{task_id}] CTR: title={best[0]} thumb={ts['score']} ready={ctr['ctr_ready']}")
+            except Exception as _ce:
+                self.logger.debug(f"ctr scoring skipped: {_ce}")
+
         # 6. Generate output files based on task type
         state_dir = os.path.join(self.workspace_root, "departments", self.department, "reports", task_id)
         os.makedirs(state_dir, exist_ok=True)
@@ -697,7 +726,14 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         except Exception as e:
             self.logger.error(f"Failed to record telemetry: {e}")
 
-        viral_out = (f"\n\n---\n📊 Virality skoru: {viral['score']}/100 ({viral['grade']}) — "
+        # CTR çıktısı EN ÜSTTE (asıl kaldıraç). Sonra script virality (ikincil).
+        ctr_out = ""
+        if ctr:
+            ctr_out = (f"\n\n---\n🎯 CTR (ASIL kaldıraç — başarının >%50'si):\n"
+                       f"📌 Başlık: \"{ctr['best_title']}\" (CTR skoru {ctr['title_ctr_score']}/100)\n"
+                       f"🖼️ Thumbnail: {ctr['thumbnail_concept'][:120]} (skor {ctr['thumbnail_ctr_score']}/100)\n"
+                       f"{'✅ CTR-hazır' if ctr['ctr_ready'] else '⚠️ Düzelt: ' + '; '.join((ctr['title_fixes']+ctr['thumbnail_fixes'])[:3])}")
+        viral_out = (f"\n\n---\n📊 Script virality (ikincil): {viral['score']}/100 ({viral['grade']}) — "
                      f"viral_ready={viral['viral_ready']}"
                      + ("\n⚠️ İyileştir: " + "; ".join(viral['fixes'][:3]) if viral.get('fixes') and not viral['viral_ready'] else "")) \
             if viral else ""
@@ -716,13 +752,14 @@ class MediaFactoryAgent(BaseDepartmentAgent):
             task_id=task_id,
             success=True,
             department=self.department,
-            output=llm_response + viral_out + mon_out,
+            output=ctr_out + viral_out + mon_out + "\n\n---\n[SCRIPT]\n" + llm_response,
             tool_results=[{
                 "task_id": task_id,
                 "type": task_type,
                 "files_created": created_files,
                 "policy_checks": policy_checks,
                 "published_posts": published_posts,
+                "ctr": ctr,
                 "virality": viral,
                 "monetization": monetization,
             }],
