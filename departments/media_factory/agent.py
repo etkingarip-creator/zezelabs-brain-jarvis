@@ -354,7 +354,27 @@ class MediaFactoryAgent(BaseDepartmentAgent):
             if not eval_result.get("needs_revision") or attempt == max_retries - 1:
                 break
             current_description = goal + f"\n\n[Critic revision request]: {eval_result['feedback']}"
-            
+
+        # M1+M2 — VIRALITY SKORU + REVİZYON GATE (script tipi görevlerde)
+        viral = None
+        if task_type in ("video", "youtube_short", "youtube_long", "content", "reel", "tiktok", "shorts"):
+            try:
+                from departments.media_factory.virality_engine import score_script
+                tgt = 600 if task_type == "youtube_long" else 30
+                viral = score_script(llm_response, target_seconds=tgt, platform=task_type)
+                # düşük viral skor → bir kez spesifik düzeltmelerle yeniden üret
+                if not viral["viral_ready"] and viral["fixes"]:
+                    fix_prompt = (current_description + "\n\n[VIRALITY REVİZYON — şu eksikleri DÜZELT]:\n"
+                                  + "\n".join(f"- {f}" for f in viral["fixes"])
+                                  + "\nHook→Problem→Çözüm→CTA yapısını net uygula, ilk satıra güçlü hook koy.")
+                    revised = await self.ask_llm(prompt=fix_prompt, system_prompt=system_prompt)
+                    rev_score = score_script(revised, target_seconds=tgt, platform=task_type)
+                    if rev_score["score"] > viral["score"]:  # iyileştiyse kullan
+                        llm_response, viral = revised, rev_score
+                self.logger.info(f"[{task_id}] Virality skoru: {viral['score']} ({viral['grade']}) viral_ready={viral['viral_ready']}")
+            except Exception as _ve:
+                self.logger.debug(f"virality scoring skipped: {_ve}")
+
         # 6. Generate output files based on task type
         state_dir = os.path.join(self.workspace_root, "departments", self.department, "reports", task_id)
         os.makedirs(state_dir, exist_ok=True)
@@ -654,17 +674,22 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         except Exception as e:
             self.logger.error(f"Failed to record telemetry: {e}")
 
+        viral_out = (f"\n\n---\n📊 Virality skoru: {viral['score']}/100 ({viral['grade']}) — "
+                     f"viral_ready={viral['viral_ready']}"
+                     + ("\n⚠️ İyileştir: " + "; ".join(viral['fixes'][:3]) if viral.get('fixes') and not viral['viral_ready'] else "")) \
+            if viral else ""
         return AgentResult(
             task_id=task_id,
             success=True,
             department=self.department,
-            output=llm_response,
+            output=llm_response + viral_out,
             tool_results=[{
                 "task_id": task_id,
                 "type": task_type,
                 "files_created": created_files,
                 "policy_checks": policy_checks,
-                "published_posts": published_posts
+                "published_posts": published_posts,
+                "virality": viral,
             }],
             error=None
         )
