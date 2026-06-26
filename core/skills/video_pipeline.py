@@ -198,28 +198,33 @@ class VideoPipeline:
             if not task_id:
                 return None
 
-            # Poll status
-            status_url = f"{base}/videos/generations/{task_id}"
-            for attempt in range(15): # Max 2.5 dakika
+            # Poll status — Z.ai sonuç endpoint'i /async-result/{id} (bigmodel.cn: /videos/generations/{id})
+            if "z.ai" in base:
+                status_url = f"{base}/async-result/{task_id}"
+            else:
+                status_url = f"{base}/videos/generations/{task_id}"
+            for attempt in range(24):  # Max 4 dakika (cogvideox-3 ~2-3dk sürebilir)
                 time.sleep(10)
-                status_resp = _req.get(status_url, headers=headers, timeout=10)
+                status_resp = _req.get(status_url, headers=headers, timeout=15)
                 if status_resp.status_code == 200:
                     result = status_resp.json()
                     task_status = result.get("task_status")
                     if task_status == "SUCCESS":
-                        video_url = result.get("video_result", [{}])[0].get("url")
+                        vr = result.get("video_result") or [{}]
+                        video_url = vr[0].get("url") if vr else None
                         if video_url:
-                            dl_resp = _req.get(video_url, timeout=60)
+                            dl_resp = _req.get(video_url, timeout=90)
                             if dl_resp.status_code == 200:
                                 with open(output_path, "wb") as f:
                                     f.write(dl_resp.content)
-                                return f"Video generated via Zhipu AI CogVideoX → {output_path}"
+                                return f"Video generated via GLM/Z.ai CogVideoX → {output_path}"
                     elif task_status in ("FAIL", "CANCELLED"):
-                        logger.warning(f"Zhipu AI video task failed: {task_status}")
+                        logger.warning(f"GLM/Z.ai video task failed: {task_status}")
                         return None
+            logger.warning("GLM/Z.ai video poll timeout (4dk)")
             return None
         except Exception as e:
-            logger.warning(f"Zhipu AI API error: {e}")
+            logger.warning(f"GLM/Z.ai video API error: {e}")
             return None
 
     def _try_higgsfield_api(self, prompt: str, output_path: str, aspect: str) -> Optional[str]:
