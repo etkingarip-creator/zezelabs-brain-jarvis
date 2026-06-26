@@ -1088,6 +1088,68 @@ class CryptoTradingAgent(BaseDepartmentAgent):
             "msg": "Limit order registered in paper trading ledger with balance locks."
         }
 
+    async def run_alpha_cycle(self, top_n: int = 8, score_threshold: int = 60,
+                              risk_pct: float = 0.02, min_notional: float = 10.0,
+                              max_new_positions: int = 2, max_position_frac: float = 0.4) -> Dict:
+        """SON BİRLEŞTİRME — tam otonom döngü: tara → skorla → TÜM kapılar → snowball sizing → emir.
+        Alpha tarayıcı 'AL' (skor≥eşik) verince: fee-kârlılık + portföy-heat + tail-risk + min-notional
+        kapılarından geçir, equity-scaled boyutla, paper emir gönder (place_order_twap, tail-gate dahil)."""
+        from departments.crypto_trading import quant_engine as _q
+        scan = await self.scan_alpha(top_n=top_n)
+        portfolio = await self._load_portfolio()
+        equity = float(portfolio.get("balance_usd", 0.0))
+        eff_fee = _q.effective_fee_rate(use_bnb=True, is_maker=True)
+
+        actions = []
+        opened = 0
+        for opp in scan.get("opportunities", []):
+            if opened >= max_new_positions:
+                break
+            if opp["score"] < score_threshold:
+                actions.append({"symbol": opp["symbol"], "decision": "GEÇ", "reason": f"skor {opp['score']} < eşik {score_threshold}"})
+                continue
+            sym = opp["symbol"]
+            tk = await self.get_binance_ticker(sym)
+            price = float(tk.get("price", 0.0)) if isinstance(tk, dict) else 0.0
+            if price <= 0:
+                continue
+            stop = price * 0.98          # %2 stop
+            target = price * 1.03        # +%3 hedef (kullanıcı stratejisi)
+            # Fee-kârlılık kapısı
+            fee_ok = _q.is_profitable_after_fees(price, target, eff_fee)
+            if not fee_ok["ok"]:
+                actions.append({"symbol": sym, "decision": "RED", "reason": fee_ok["reason"]}); continue
+            # Snowball sizing (min-notional + equity-scaled), tek-pozisyon tavanı ile sınırlı
+            sz = _q.snowball_position_size(equity, price, stop, min_notional=min_notional,
+                                          risk_pct=risk_pct, max_equity_frac=max_position_frac)
+            if not sz["can_trade"]:
+                actions.append({"symbol": sym, "decision": "BEKLE", "reason": sz["reason"]}); continue
+            # P1 PORTFÖY KAPISI: bu emirle toplam ısı/beta tavanı aşılıyor mu?
+            new_risk = sz["notional_usd"] * 0.02
+            pr = _q.portfolio_risk_check([{"risk_usd": a["notional_usd"] * 0.02, "beta": 1.0} for a in actions if a["decision"] == "AL"],
+                                         equity, new_risk_usd=new_risk)
+            if not pr["approved"]:
+                actions.append({"symbol": sym, "decision": "PORTFÖY_RED", "reason": "; ".join(pr["rejection_reasons"])}); continue
+            # Emir (place_order_twap → tail-risk kapısı içeride)
+            qty = round(sz["notional_usd"] / price, 6)
+            order = {"symbol": sym, "side": "BUY", "type": "LIMIT", "timeInForce": "GTC",
+                     "quantity": f"{qty:.6f}", "price": f"{price:.6f}", "auto_tp": True}
+            res = await self.place_order_twap(order)
+            ok = isinstance(res, dict) and "error" not in res
+            actions.append({"symbol": sym, "decision": "AL" if ok else "EMİR_HATASI",
+                            "score": opp["score"], "notional_usd": sz["notional_usd"],
+                            "qty": qty, "price": price, "result": res if ok else res.get("error")})
+            if ok:
+                opened += 1
+        return {
+            "scanned_at_utc": scan.get("scanned_at_utc"),
+            "is_active_hour": scan.get("is_active_hour"),
+            "equity_usd": round(equity, 2),
+            "opportunities_found": len(scan.get("opportunities", [])),
+            "positions_opened": opened,
+            "actions": actions,
+        }
+
     async def scan_alpha(self, top_n: int = 6, interval: str = "15m") -> Dict:
         """ALPHA TARAYICI — 'görülmeyeni gör, en yüksek hedef tuttur'. Aktif saatte top-mover'ları
         tarar; her coine çok-sinyalli KONFLUANS skoru verir (RVOL + OBI + sıkışma + rejim + funding
