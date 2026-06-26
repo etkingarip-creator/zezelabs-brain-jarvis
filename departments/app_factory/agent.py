@@ -129,20 +129,10 @@ class AppFactoryAgent(BaseDepartmentAgent):
         except Exception as e:
             self.logger.warning(f"LLM generation failed: {e}. Falling back to default templates.")
             
-        files = {}
-        if llm_response:
-            try:
-                clean_response = llm_response.strip()
-                if clean_response.startswith("```json"):
-                    clean_response = clean_response[7:]
-                if clean_response.endswith("```"):
-                    clean_response = clean_response[:-3]
-                clean_response = clean_response.strip()
-                files = json.loads(clean_response)
-            except Exception as e:
-                self.logger.warning(f"Failed to parse JSON response: {e}. Using templates.")
+        files = self._robust_parse_files(llm_response) if llm_response else {}
                 
-        required_files = ["README.md", "manifest.json", "app/main.py", "tests/test_smoke.py"]
+        required_files = ["README.md", "manifest.json", "app/main.py", "tests/test_smoke.py",
+                          "Dockerfile", "Procfile"]
         # HEP-YA-HİÇ TUTARLILIK: herhangi bir dosya eksik/geçersiz/syntax-hatalıysa, LLM+fallback
         # KARIŞIMI uyumsuz app üretir (LLM main.py + fallback test → import uyuşmazlığı). O yüzden
         # tek bir dosya bile bozuksa TÜM seti tutarlı stdlib fallback'ten kur.
@@ -331,44 +321,102 @@ class AppFactoryAgent(BaseDepartmentAgent):
                 return False
         return True
 
+    def _robust_parse_files(self, resp: str) -> Dict[str, str]:
+        """F6 — sağlam JSON parse (jenerik fallback'i azalt). Markdown çitleri, en geniş {...},
+        ham kontrol karakteri kaçışı dener. Başarısızsa boş döner (→ fallback)."""
+        s = resp.strip()
+        # markdown çitlerini temizle
+        m = re.search(r"```(?:json)?\s*(.*?)```", s, re.DOTALL)
+        if m:
+            s = m.group(1).strip()
+        # en geniş {...} bloğu
+        b = re.search(r"\{.*\}", s, re.DOTALL)
+        cand = b.group(0) if b else s
+        for attempt in (cand, cand.replace("\t", "\\t"), re.sub(r"(?<!\\)\n(?=[^\"]*\":)", "\\\\n", cand)):
+            try:
+                data = json.loads(attempt)
+                if isinstance(data, dict):
+                    files = data.get("files", data)
+                    out = {k: v for k, v in files.items() if isinstance(v, str) and v.strip()}
+                    if out:
+                        return out
+            except Exception:
+                continue
+        self.logger.warning("[app_factory] LLM JSON parse edilemedi → tutarlı fallback.")
+        return {}
+
     def _get_fallback_template(self, filename: str, goal: str) -> str:
-        """STDLIB-ONLY fallback: harici bağımlılık YOK → gerçekten çalışır ve test GEÇER (F1
-        doğrulanabilir). FastAPI fallback'i doğrulanamıyordu (deps_missing). Bağımsız + sağlık
-        endpoint'i + config/secret ayrımı (uzmanlık paketi prensibi)."""
+        """FULL-STACK STDLIB fallback: sqlite3 (gerçek kalıcı DB) + token auth + Docker (deploy-hazır).
+        Harici paket YOK → gerçekten çalışır + test GEÇER (F1 doğrulanabilir). DB+auth+deploy =
+        rakip kategorisine girer; stdlib = bağımlılıksız doğrulanabilir."""
         if filename == "README.md":
             return (
-                f"# {goal}\n\nZezeLabs AppFactory tarafından üretildi (stdlib-only, bağımlılıksız).\n\n"
+                f"# {goal}\n\nZezeLabs AppFactory — full-stack (sqlite DB + token auth), stdlib-only.\n\n"
                 f"## Çalıştırma\n```bash\npython -m app.main   # http://localhost:8000\n```\n"
-                f"## Test\n```bash\npytest -q\n```\n## Sağlık\n`GET /health` → {{\"status\":\"ok\"}}\n")
+                f"## Test\n```bash\npytest -q\n```\n## Deploy (container)\n```bash\n"
+                f"docker build -t app . && docker run -p 8000:8000 -e API_TOKEN=gizli app\n```\n"
+                f"Hosting (Railway/Fly/Render): repo'yu bağla, API_TOKEN secret'ını ayarla.\n\n"
+                f"## Endpoint'ler\n- `GET /health` sağlık\n- `GET /items` listele\n"
+                f"- `POST /items` ekle (Authorization: Bearer <API_TOKEN>)\n")
         if filename == "manifest.json":
-            return json.dumps({"name": "zezelabs-scaffold", "version": "1.0.0",
+            return json.dumps({"name": "zezelabs-fullstack", "version": "1.0.0",
                                "description": f"{goal}", "runtime": "python-stdlib",
                                "dependencies": {}, "entrypoint": "app/main.py",
-                               "endpoints": ["/", "/health"]}, indent=2, ensure_ascii=False)
+                               "database": "sqlite3", "auth": "bearer-token",
+                               "endpoints": ["/health", "GET /items", "POST /items"],
+                               "deploy": ["Dockerfile", "Procfile"]}, indent=2, ensure_ascii=False)
         if filename == "app/main.py":
             return (
-                "import os\nimport json\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\n\n"
-                "# config/secret ayrımı (uzmanlık prensibi): env'den oku, kod gömme\n"
+                "import os\nimport json\nimport sqlite3\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\n\n"
+                "# config/secret: env'den (kod gömme yok)\n"
                 "CONFIG = {\"port\": int(os.getenv(\"PORT\", \"8000\")),\n"
+                "          \"db\": os.getenv(\"DB_PATH\", \"app.db\"),\n"
+                "          \"token\": os.getenv(\"API_TOKEN\", \"dev-token\"),\n"
                 "          \"app_name\": os.getenv(\"APP_NAME\", " + repr(goal) + ")}\n\n"
-                "def health() -> dict:\n    \"\"\"Sağlık kontrolü — saf, test edilebilir.\"\"\"\n"
-                "    return {\"status\": \"ok\", \"app\": CONFIG[\"app_name\"]}\n\n"
-                "def root() -> dict:\n    return {\"message\": \"ZezeLabs scaffold çalışıyor\", \"app\": CONFIG[\"app_name\"]}\n\n"
+                "def _conn():\n    c = sqlite3.connect(CONFIG[\"db\"])\n"
+                "    c.execute(\"CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT)\")\n"
+                "    return c\n\n"
+                "def health() -> dict:\n    return {\"status\": \"ok\", \"app\": CONFIG[\"app_name\"], \"db\": \"sqlite\"}\n\n"
+                "def add_item(name: str) -> dict:\n    \"\"\"Gerçek DB yazma — saf, test edilebilir.\"\"\"\n"
+                "    c = _conn()\n    cur = c.execute(\"INSERT INTO items (name) VALUES (?)\", (name,))\n"
+                "    c.commit()\n    iid = cur.lastrowid\n    c.close()\n    return {\"id\": iid, \"name\": name}\n\n"
+                "def list_items() -> list:\n    c = _conn()\n    rows = c.execute(\"SELECT id, name FROM items\").fetchall()\n"
+                "    c.close()\n    return [{\"id\": r[0], \"name\": r[1]} for r in rows]\n\n"
+                "def check_auth(header: str) -> bool:\n    \"\"\"Bearer token doğrulama.\"\"\"\n"
+                "    return header == f\"Bearer {CONFIG['token']}\"\n\n"
                 "class Handler(BaseHTTPRequestHandler):\n"
+                "    def _send(self, code, payload):\n        body = json.dumps(payload).encode()\n"
+                "        self.send_response(code)\n        self.send_header(\"Content-Type\", \"application/json\")\n"
+                "        self.end_headers()\n        self.wfile.write(body)\n"
                 "    def do_GET(self):\n"
-                "        payload = health() if self.path == \"/health\" else root()\n"
-                "        body = json.dumps(payload).encode()\n"
-                "        self.send_response(200)\n"
-                "        self.send_header(\"Content-Type\", \"application/json\")\n"
-                "        self.end_headers()\n        self.wfile.write(body)\n\n"
+                "        if self.path == \"/health\": self._send(200, health())\n"
+                "        elif self.path == \"/items\": self._send(200, list_items())\n"
+                "        else: self._send(200, {\"app\": CONFIG[\"app_name\"]})\n"
+                "    def do_POST(self):\n"
+                "        if not check_auth(self.headers.get(\"Authorization\", \"\")):\n"
+                "            self._send(401, {\"error\": \"unauthorized\"}); return\n"
+                "        n = int(self.headers.get(\"Content-Length\", 0))\n"
+                "        data = json.loads(self.rfile.read(n) or b'{}')\n"
+                "        self._send(201, add_item(data.get(\"name\", \"\")))\n\n"
                 "def run():\n    HTTPServer((\"\", CONFIG[\"port\"]), Handler).serve_forever()\n\n"
                 "if __name__ == \"__main__\":\n    run()\n")
         if filename == "tests/test_smoke.py":
             return (
-                "import os, sys\nsys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))\n"
-                "from app.main import health, root\n\n"
+                "import os, sys, tempfile\n"
+                "os.environ[\"DB_PATH\"] = os.path.join(tempfile.gettempdir(), \"zztest.db\")\n"
+                "if os.path.exists(os.environ[\"DB_PATH\"]): os.remove(os.environ[\"DB_PATH\"])\n"
+                "sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))\n"
+                "from app.main import health, add_item, list_items, check_auth, CONFIG\n\n"
                 "def test_health():\n    assert health()[\"status\"] == \"ok\"\n\n"
-                "def test_root():\n    assert \"message\" in root()\n")
+                "def test_db_crud():\n    add_item(\"alpha\")\n    items = list_items()\n"
+                "    assert any(i[\"name\"] == \"alpha\" for i in items)\n\n"
+                "def test_auth():\n    assert check_auth(f\"Bearer {CONFIG['token']}\") is True\n"
+                "    assert check_auth(\"Bearer wrong\") is False\n")
+        if filename == "Dockerfile":
+            return ("FROM python:3.11-slim\nWORKDIR /app\nCOPY . .\n"
+                    "ENV PORT=8000\nEXPOSE 8000\nCMD [\"python\", \"-m\", \"app.main\"]\n")
+        if filename == "Procfile":
+            return "web: python -m app.main\n"
         return ""
 
     def _get_fallback_template_legacy(self, filename: str, goal: str) -> str:
