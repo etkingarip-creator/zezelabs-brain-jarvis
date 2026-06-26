@@ -1088,6 +1088,52 @@ class CryptoTradingAgent(BaseDepartmentAgent):
             "msg": "Limit order registered in paper trading ledger with balance locks."
         }
 
+    async def scan_alpha(self, top_n: int = 6, interval: str = "15m") -> Dict:
+        """ALPHA TARAYICI — 'görülmeyeni gör, en yüksek hedef tuttur'. Aktif saatte top-mover'ları
+        tarar; her coine çok-sinyalli KONFLUANS skoru verir (RVOL + OBI + sıkışma + rejim + funding
+        + tail-risk). Tek sinyal değil; sinyallerin üst üste bindiği en yüksek-olasılıklı fırsatları
+        sıralar. Hızlı: top_n coin × (kline+orderbook+funding)."""
+        from departments.crypto_trading import quant_engine as _q
+        from datetime import datetime, timezone
+        movers = await self.get_top_movers(top_n=top_n)
+        results = []
+        for m in movers:
+            sym = m["symbol"]
+            try:
+                kl = await self.get_binance_klines(sym, interval, 60)
+                if not isinstance(kl, list) or len(kl) < 30:
+                    continue
+                closes = [float(k[4]) for k in kl]
+                highs = [float(k[2]) for k in kl]
+                lows = [float(k[3]) for k in kl]
+                vols = [float(k[5]) for k in kl]
+                rvol = _q.relative_volume(vols)
+                sq = _q.bollinger_squeeze(closes)
+                adxv = _q.adx(highs, lows, closes)
+                regime = _q.market_regime(adxv)
+                tail = _q.tail_risk_check(closes, sym)
+                book = await self.get_binance_order_book(sym, 20)
+                obi = self.calculate_order_book_imbalance(book) if isinstance(book, dict) else 0.0
+                fr = await self.get_funding_rate(sym)
+                funding = fr.get("lastFundingRate", 0.0) if isinstance(fr, dict) else 0.0
+                conf = _q.confluence_score(rvol, obi, sq["squeeze"], regime, funding, tail["halt"])
+                results.append({
+                    "symbol": sym, "score": conf["score"], "direction": conf["direction"],
+                    "rvol": rvol, "obi": round(obi, 3), "squeeze": sq["squeeze"],
+                    "regime": regime, "change_24h_pct": m["change_pct"], "reasons": conf["reasons"],
+                })
+            except Exception as e:
+                self.logger.debug(f"scan_alpha {sym} skipped: {e}")
+        results.sort(key=lambda r: r["score"], reverse=True)
+        active = await self.get_active_hours("BTCUSDT", 14)
+        return {
+            "scanned_at_utc": datetime.now(timezone.utc).strftime("%H:%M"),
+            "is_active_hour": active.get("is_now_active", None),
+            "peak_hours_tr": active.get("peak_hours_local_tr", []),
+            "opportunities": results,
+            "top_pick": results[0] if results else None,
+        }
+
     async def get_top_movers(self, top_n: int = 10, min_volume_usd: float = 5_000_000.0) -> List[Dict]:
         """En hareketli coinler: 24s hacim + volatilite (|fiyat değişimi %|). Likidite filtreli.
         Döner: [{symbol, change_pct, quote_volume_usd, score}] — score = volatilite × log(hacim)."""

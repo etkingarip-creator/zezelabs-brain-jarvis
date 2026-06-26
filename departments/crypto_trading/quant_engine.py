@@ -258,6 +258,84 @@ def twap_slices(total_qty: float, n_slices: int = 4) -> List[float]:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# ALPHA SİNYALLERİ — "görülmeyeni gör": mikroyapı + pozisyonlanma + sıkışma
+# ──────────────────────────────────────────────────────────────────────────
+
+def relative_volume(volumes: List[float], lookback: int = 24) -> float:
+    """Bağıl hacim (RVOL): son mum / geçmiş ortalama. >2 = olağandışı ilgi (fiyat HAREKETİNDEN ÖNCE
+    gelen ilk sinyal — 'görülmeyen' birikim)."""
+    if len(volumes) < lookback + 1:
+        return 1.0
+    base = sum(volumes[-lookback - 1:-1]) / lookback
+    if base <= 0:
+        return 1.0
+    return round(volumes[-1] / base, 2)
+
+
+def bollinger_squeeze(closes: List[float], period: int = 20, lookback: int = 50) -> Dict:
+    """Volatilite sıkışması (Bollinger bant genişliği tarihsel dipte) → patlama öncesi 'kıvrılma'.
+    Piyasa nefes tutuyor; en büyük hareketler buradan çıkar. 'Görülmeyen' enerji birikimi."""
+    if len(closes) < max(period, lookback) + 1:
+        return {"squeeze": False, "bandwidth_pct": 0.0, "percentile": 100.0}
+    widths = []
+    for i in range(len(closes) - lookback, len(closes)):
+        window = closes[i - period + 1:i + 1]
+        if len(window) < period:
+            continue
+        mean = sum(window) / period
+        var = sum((x - mean) ** 2 for x in window) / period
+        std = var ** 0.5
+        widths.append((4 * std / mean) if mean > 0 else 0.0)  # üst-alt bant aralığı / orta
+    if not widths:
+        return {"squeeze": False, "bandwidth_pct": 0.0, "percentile": 100.0}
+    cur = widths[-1]
+    pct = sum(1 for w in widths if w <= cur) / len(widths) * 100
+    return {"squeeze": pct <= 20.0, "bandwidth_pct": round(cur * 100, 3), "percentile": round(pct, 1)}
+
+
+def oi_price_divergence(price_change_pct: float, oi_change_pct: float) -> Dict:
+    """Open Interest × fiyat — 'duyulmayanı duy' (pozisyonlanma).
+    Fiyat↑ OI↑ = yeni para/güçlü trend. Fiyat↑ OI↓ = short-kapanış/zayıf ralli.
+    Fiyat↓ OI↑ = yeni short/güçlü düşüş. Fiyat↓ OI↓ = long-kapanış/dip yakın."""
+    if price_change_pct > 0 and oi_change_pct > 0:
+        return {"signal": "güçlü_yükseliş", "note": "yeni para giriyor (fiyat↑ OI↑)"}
+    if price_change_pct > 0 and oi_change_pct < 0:
+        return {"signal": "zayıf_ralli", "note": "short-kapanış, sürdürülemez (fiyat↑ OI↓)"}
+    if price_change_pct < 0 and oi_change_pct > 0:
+        return {"signal": "güçlü_düşüş", "note": "yeni short (fiyat↓ OI↑)"}
+    return {"signal": "dip_yakın", "note": "long-kapanış tükeniyor (fiyat↓ OI↓)"}
+
+
+def confluence_score(rvol: float, obi: float, squeeze: bool, regime: str,
+                     funding: float, tail_halt: bool) -> Dict:
+    """KONFLUANS — çok sinyali tek skora birleştir. 'En yüksek hedef tutturan' = tek sinyal değil,
+    sinyallerin ÜST ÜSTE bindiği yer. 0-100 skor + işlem yönü."""
+    if tail_halt:
+        return {"score": 0, "direction": "BEKLE", "reasons": ["tail-risk halt — felaket riski"]}
+    score = 0.0
+    reasons = []
+    if rvol >= 2.0:
+        score += 30; reasons.append(f"RVOL {rvol}× (olağandışı ilgi)")
+    elif rvol >= 1.5:
+        score += 15; reasons.append(f"RVOL {rvol}×")
+    if obi >= 0.2:
+        score += 25; reasons.append(f"OBI +{obi} (alıcı baskın)")
+    elif obi <= -0.2:
+        score -= 10; reasons.append(f"OBI {obi} (satıcı baskın)")
+    if squeeze:
+        score += 25; reasons.append("Bollinger sıkışması (patlama öncesi)")
+    if regime == "trend":
+        score += 15; reasons.append("trend rejimi (momentum uygun)")
+    elif regime == "range":
+        score += 5
+    if abs(funding) > 0.0005:
+        score -= 10; reasons.append("aşırı funding (squeeze riski)")
+    score = max(0, min(100, score))
+    direction = "AL" if score >= 60 else ("İZLE" if score >= 35 else "GEÇ")
+    return {"score": round(score), "direction": direction, "reasons": reasons}
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # BNB FEE MOTORU — komisyonu minimize et (küçük-hesabın 1 numaralı düşmanı)
 # ──────────────────────────────────────────────────────────────────────────
 
