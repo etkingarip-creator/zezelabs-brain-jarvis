@@ -195,6 +195,88 @@ class AppFactoryAgent(BaseDepartmentAgent):
             tool_results=tool_results
         )
 
+    async def run_app_lifecycle(self, goal: str, task_id: Optional[str] = None,
+                                with_monetization: bool = True) -> Dict[str, Any]:
+        """TAM DÖNGÜ (holding edge'i): fikir→KUR→DOĞRULA→GERÇEK runtime deploy→analitik→monetizasyon.
+        Rakipler 'build'de durur. Her aşama GERÇEK kontrol (sahte-yeşil yok). Departmanlar arası."""
+        import uuid
+        if not task_id:
+            task_id = str(uuid.uuid4())
+        stages = {}
+
+        # 1. KUR + DOĞRULA (pytest gerçek-yeşil)
+        built = await self.run_dry_task(goal=goal, task_id=task_id)
+        stages["build_verify"] = {"ok": built.success, "detail": built.output[:160]}
+        scaffold_dir = os.path.realpath(os.path.join(self.workspace_root, "app_factory", "scaffolds", task_id))
+
+        # 2. GERÇEK RUNTIME DEPLOY (yerel): server'ı BAŞLAT, /health'e dokun (gerçek servis kanıtı)
+        stages["runtime_deploy"] = self._deploy_and_probe(scaffold_dir)
+
+        # 3. ANALİTİK/ENSTRÜMAN: /health + / yanıt veriyor mu (gözlemlenebilirlik temeli)
+        stages["instrument"] = {"ok": stages["runtime_deploy"].get("health_ok", False),
+                                "detail": "sağlık endpoint'i izlenebilir" if stages["runtime_deploy"].get("health_ok") else "endpoint yok"}
+
+        # 4. MONETİZASYON (departmanlar arası — zeze_business): gerçek delegasyon
+        if with_monetization:
+            try:
+                mon = await self.delegate_task("zeze_business", {
+                    "task_id": f"mon-{task_id}", "task_type": "monetization",
+                    "description": f"Şu uygulama için somut monetizasyon planı (fiyatlandırma, hedef kitle, ilk gelir yolu): {goal}"})
+                stages["monetization"] = {"ok": bool(mon.get("success")), "detail": str(mon.get("output", ""))[:200]}
+            except Exception as e:
+                stages["monetization"] = {"ok": False, "detail": f"delegasyon hatası: {e}"}
+
+        # DÜRÜST genel durum: build+deploy gerçek-yeşil olmalı (monetizasyon bonus)
+        core_ok = stages["build_verify"]["ok"] and stages["runtime_deploy"].get("ok", False)
+        return {"task_id": task_id, "goal": goal, "lifecycle_complete": core_ok,
+                "stages": stages, "scaffold_dir": scaffold_dir}
+
+    def _deploy_and_probe(self, scaffold_dir: str, timeout_s: int = 8) -> Dict[str, Any]:
+        """GERÇEK runtime kanıtı: app'i subprocess olarak başlat, /health'e HTTP at, 200 + payload doğrula.
+        Unit test değil — app'in GERÇEKTEN trafik servis ettiğinin kanıtı (rakiplerin iddia ettiği şey)."""
+        import subprocess
+        import sys as _sys
+        import time as _time
+        import socket
+        import urllib.request
+        main_py = os.path.join(scaffold_dir, "app", "main.py")
+        if not os.path.exists(main_py):
+            return {"ok": False, "detail": "app/main.py yok"}
+        # boş port bul
+        s = socket.socket(); s.bind(("", 0)); port = s.getsockname()[1]; s.close()
+        env = dict(os.environ, PORT=str(port))
+        proc = None
+        try:
+            proc = subprocess.Popen([_sys.executable, "-m", "app.main"], cwd=scaffold_dir, env=env,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            health_ok = root_ok = False
+            deadline = _time.time() + timeout_s
+            while _time.time() < deadline:
+                if proc.poll() is not None:
+                    err = proc.stderr.read().decode(errors="ignore")[:200] if proc.stderr else ""
+                    return {"ok": False, "detail": f"server çöktü: {err}"}
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1) as resp:
+                        import json as _json
+                        data = _json.loads(resp.read().decode())
+                        health_ok = resp.status == 200 and data.get("status") == "ok"
+                    with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as resp2:
+                        root_ok = resp2.status == 200
+                    break
+                except Exception:
+                    _time.sleep(0.4)
+            return {"ok": health_ok and root_ok, "health_ok": health_ok, "root_ok": root_ok,
+                    "port": port, "detail": "canlı servis /health 200 ✅" if health_ok else "servis yanıt vermedi"}
+        except Exception as e:
+            return {"ok": False, "detail": f"deploy hatası: {e}"}
+        finally:
+            if proc and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except Exception:
+                    proc.kill()
+
     def _verify_scaffold(self, scaffold_dir: str) -> Dict[str, Any]:
         """F1 — üretilen app GERÇEKTEN çalışıyor mu? syntax → import → pytest.
         verified=True SADECE pytest gerçek-yeşilse. Eksik bağımlılık 'çalışmadı' değil ayrı sınıf."""
