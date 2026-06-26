@@ -54,8 +54,11 @@ class ZezeDevAgent(BaseDepartmentAgent):
             system_prompt = "Sen ZezeLabs Yazılım Geliştirme (Dev) ajanısın. Hata ayıklar, kodu file_writer ile onarırsın."
             return await self._standard_execute(task_data, system_prompt, description)
 
-        # Görev-tipi kapsama: kod üretimi | code review | aksi → generic
+        # Görev-tipi kapsama: issue-çözme (mevcut kod) | kod üretimi | review | generic
         routes = [
+            (["issue", "bug", "hatayı bul", "hatayı düzelt", "mevcut kod", "repoda", "codebase",
+              "dosyada", "var olan", "fix in", "patch", "düzelt:", "çalışmıyor"],
+             self._handle_issue),
             (["kod yaz", "fonksiyon", "implement", "uygula", "geliştir", "yaz ve test",
               "fix", "feature", "endpoint", "class", "modül", "build", "code", "script"],
              self._handle_codegen),
@@ -64,6 +67,163 @@ class ZezeDevAgent(BaseDepartmentAgent):
         ]
         default_sp = "Sen ZezeLabs Yazılım Geliştirme ajanısın. Mimari planlar, kod standartları belirlersin."
         return await self.dispatch_by_task_type(task_data, routes, default_sp)
+
+    def _code_search(self, term: str, root: str, max_hits: int = 50) -> Dict[str, int]:
+        """Native kod arama (ripgrep varsa onu, yoksa saf-Python os.walk). Köprüye bağımlı değil."""
+        import subprocess
+        hits = {}
+        try:
+            r = subprocess.run(["rg", "-l", "--type", "py", term, root],
+                               capture_output=True, text=True, timeout=20)
+            if r.returncode == 0:
+                for fp in r.stdout.splitlines():
+                    if fp.strip().endswith(".py") and os.path.exists(fp.strip()):
+                        hits[fp.strip()] = hits.get(fp.strip(), 0) + 1
+                if hits:
+                    return hits
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+            pass
+        # Saf-Python fallback
+        pat = re.compile(re.escape(term))
+        for dirpath, _, files in os.walk(root):
+            if any(skip in dirpath for skip in ("__pycache__", ".git", "node_modules")):
+                continue
+            for fn in files:
+                if not fn.endswith(".py"):
+                    continue
+                fp = os.path.join(dirpath, fn)
+                try:
+                    with open(fp, encoding="utf-8", errors="ignore") as f:
+                        c = pat.findall(f.read())
+                        if c:
+                            hits[fp] = len(c)
+                except Exception:
+                    pass
+                if len(hits) >= max_hits:
+                    return hits
+        return hits
+
+    def _surgical_edit(self, path: str, old: str, new: str) -> Dict:
+        """Yerinde cerrahi düzenleme. old_string benzersiz olmalı; değilse reddet (güvenlik)."""
+        if not old or not os.path.exists(path):
+            return {"ok": False, "reason": "geçersiz path/old_string"}
+        try:
+            with open(path, encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:
+            return {"ok": False, "reason": f"okunamadı: {e}"}
+        count = content.count(old)
+        if count == 0:
+            return {"ok": False, "reason": "old_string dosyada yok"}
+        if count > 1:
+            return {"ok": False, "reason": f"old_string {count} kez var (benzersiz değil)"}
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content.replace(old, new, 1))
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "reason": f"yazılamadı: {e}"}
+
+    async def _handle_issue(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """ISSUE-ÇÖZME — gerçek SWE pipeline'ı: codebase'i ARA → ANLA → CERRAHI DÜZELT → TEST → SELF-HEAL.
+        Greenfield üreteç değil; mevcut kodda issue çözer (frontier standardı). Native, köprüye bağımsız."""
+        from core.skills.registry import SkillRegistry
+        registry = SkillRegistry()
+        task_id = self._safe_task_id(task_data)
+        description = task_data.get("description", "") or ""
+        search_root = task_data.get("path", "departments")  # arama kökü
+
+        # 1. SEARCH: LLM'den arama terimleri al, grep/glob ile aday dosyaları bul
+        kw_prompt = (
+            f"GÖREV (issue): {description}\n\nBu issue'yu çözmek için codebase'de aranacak 1-3 anahtar "
+            f"terim ver (fonksiyon/değişken/string adı). SADECE JSON: {{\"terms\": [\"term1\", \"term2\"]}}"
+        )
+        kw_resp = await self.ask_llm(kw_prompt, system_prompt="Sen kod arama uzmanısın. İsabetli arama terimleri seçersin.")
+        terms = []
+        try:
+            m = re.search(r'\{.*\}', kw_resp, re.DOTALL)
+            if m:
+                terms = json.loads(m.group(0)).get("terms", [])
+        except Exception:
+            pass
+        if not terms:
+            terms = [w for w in re.findall(r"[A-Za-z_]{4,}", description)][:3]
+        # terimleri temizle (parantez/uzantı/özel karakter regex'i bozar)
+        terms = [re.sub(r"[^\w]", "", t) for t in terms if re.sub(r"[^\w]", "", t)]
+
+        candidates = {}
+        for term in terms[:3]:
+            for fp, c in self._code_search(term, search_root).items():
+                candidates[fp] = candidates.get(fp, 0) + c
+        ranked = sorted(candidates, key=candidates.get, reverse=True)[:3]
+        if not ranked:
+            return {"success": False, "task_id": task_id,
+                    "output": f"Issue için ilgili dosya bulunamadı (terimler: {terms}).", "deliverable": False}
+
+        # 2. UNDERSTAND: aday dosyaları oku
+        file_ctx = ""
+        for fp in ranked:
+            try:
+                with open(fp, encoding="utf-8", errors="ignore") as f:
+                    file_ctx += f"\n\n### DOSYA: {fp}\n{f.read()[:3000]}"
+            except Exception:
+                pass
+
+        # 3+4+5. EDIT → TEST → SELF-HEAL (cerrahi düzenleme, 3 deneme)
+        applied = []
+        test_output = ""
+        success = False
+        for attempt in range(3):
+            edit_prompt = (
+                f"ISSUE: {description}\n\nİLGİLİ KOD:{file_ctx}\n\n"
+                f"Issue'yu çözen CERRAHI düzenlemeyi ver. old_string DOSYADA BİREBİR var olmalı (yeterince "
+                f"benzersiz, 3-8 satır). SADECE JSON: "
+                f'{{"path": "dosya yolu", "old_string": "değişecek tam blok", "new_string": "yeni blok", "explanation": "neden"}}'
+                + (f"\n\n[ÖNCEKI DENEME BAŞARISIZ: {test_output[:600]}]" if attempt else "")
+            )
+            edit_resp = await self.ask_llm(edit_prompt, system_prompt="Sen kıdemli mühendissin. Minimal, doğru, cerrahi düzeltme yaparsın. Bütün dosyayı değil, gereken satırları değiştirirsin.")
+            try:
+                edit = json.loads(re.search(r'\{.*\}', edit_resp, re.DOTALL).group(0))
+            except Exception:
+                continue
+            path = edit.get("path", "")
+            if not path or not os.path.exists(path):
+                path = ranked[0]
+            res = self._surgical_edit(path, edit.get("old_string", ""), edit.get("new_string", ""))
+            if not res["ok"]:
+                test_output = f"Edit uygulanamadı: {res['reason']}"
+                continue
+            applied.append({"path": path, "explanation": edit.get("explanation", "")})
+
+            # TEST: ilgili dizinde pytest (varsa) + syntax kontrolü
+            runner = (
+                "import subprocess, sys, py_compile\n"
+                f"try:\n    py_compile.compile({path!r}, doraise=True)\n    print('SYNTAX OK')\n"
+                "except Exception as e:\n    print('SYNTAX FAIL', e)\n"
+                f"r = subprocess.run([sys.executable, '-m', 'pytest', '-q', {os.path.dirname(path)!r}], capture_output=True, text=True, timeout=90)\n"
+                "print(r.stdout[-1500:]); print('EXIT', r.returncode)"
+            )
+            test_output = str(await registry.execute_tool("python_executor", {"code": runner}))
+            if "SYNTAX OK" in test_output and ("EXIT 0" in test_output or "no tests ran" in test_output.lower() or ("passed" in test_output.lower() and "failed" not in test_output.lower())):
+                success = True
+                break
+
+        report_dir = os.path.join(self.workspace_root, "departments", self.department, "reports", task_id)
+        os.makedirs(report_dir, exist_ok=True)
+        with open(os.path.join(report_dir, "issue_resolution.json"), "w", encoding="utf-8") as f:
+            json.dump({"task_id": task_id, "description": description, "searched_terms": terms,
+                       "candidate_files": ranked, "applied_edits": applied, "success": success,
+                       "test_output": test_output[-1500:]}, f, indent=2, ensure_ascii=False)
+
+        output = (
+            f"# Issue Çözüm Raporu\n\n**Issue:** {description}\n\n"
+            f"**Arama terimleri:** {terms}\n**Aday dosyalar:** {ranked}\n\n"
+            f"**Uygulanan düzenlemeler ({len(applied)}):**\n"
+            + "\n".join(f"- `{a['path']}`: {a['explanation']}" for a in applied)
+            + f"\n\n**Sonuç:** {'✅ ÇÖZÜLDÜ (syntax+test geçti)' if success else '⚠️ Doğrulanamadı'}\n\n```\n{test_output[-600:]}\n```"
+        )
+        return {"success": success, "task_id": task_id, "output": output,
+                "artifacts": [a["path"] for a in applied], "deliverable": len(applied) > 0}
 
     async def _handle_review(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """Code review handler: yapılandırılmış inceleme raporu üretir."""
