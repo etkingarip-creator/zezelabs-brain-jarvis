@@ -161,9 +161,11 @@ class VideoPipeline:
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    def _try_zhipu_api(self, prompt: str, output_path: str, aspect: str, duration_sec: int) -> Optional[str]:
+    def _try_zhipu_api(self, prompt: str, output_path: str, aspect: str, duration_sec: int,
+                       premium: bool = False) -> Optional[str]:
         """GLM/Z.ai (CogVideoX) video API. Mevcut Z.ai anahtarını (ZENMUX_API_KEY) Z.ai
-        video endpoint'iyle kullanır; ayrı ZHIPU_API_KEY (bigmodel.cn) varsa onu tercih eder."""
+        video endpoint'iyle kullanır; ayrı ZHIPU_API_KEY (bigmodel.cn) varsa onu tercih eder.
+        premium=True → ürün finali (quality+audio+1080p, pahalı). False → ekonomi (speed+audio'suz+720p, ucuz)."""
         zhipu_key = os.getenv("ZHIPU_API_KEY")
         zai_key = os.getenv("ZENMUX_API_KEY") or os.getenv("ZAI_API_KEY")
         if zhipu_key:
@@ -181,14 +183,24 @@ class VideoPipeline:
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json"
             }
-            body = {
-                "model": os.getenv("ZAI_VIDEO_MODEL", "cogvideox-3"),
-                "prompt": prompt,
-                "quality": "quality",
-                "with_audio": True,  # ürün finali için sesli (Z.ai destekliyor)
-                "size": "1080x1920" if aspect == "9:16" else "1920x1080",
-                "duration": min(max(int(duration_sec), 5), 10),
-            }
+            # GERÇEKÇİLİK: prompt'a fotorealistik sinematik anahtarlar (ücretsiz kalite artışı)
+            realism = (", photorealistic, hyper-realistic, cinematic lighting, shot on ARRI Alexa, "
+                       "shallow depth of field, natural skin/texture, 4k, film grain, realistic physics")
+            rich_prompt = (prompt or "").strip() + realism
+            if premium:
+                body = {
+                    "model": os.getenv("ZAI_VIDEO_MODEL", "cogvideox-3"),
+                    "prompt": rich_prompt, "quality": "quality", "with_audio": True,
+                    "size": "1080x1920" if aspect == "9:16" else "1920x1080",
+                    "duration": min(max(int(duration_sec), 5), 10),
+                }
+            else:  # EKONOMİ — çok daha ucuz (speed modu, audio'suz, 720p)
+                body = {
+                    "model": os.getenv("ZAI_VIDEO_MODEL", "cogvideox-3"),
+                    "prompt": rich_prompt, "quality": "speed", "with_audio": False,
+                    "size": "720x1280" if aspect == "9:16" else "1280x720",
+                    "duration": 5,
+                }
             resp = _req.post(url, json=body, headers=headers, timeout=20)
             if resp.status_code != 200:
                 logger.warning(f"GLM/Z.ai video submit failed: {resp.text[:200]}")
@@ -270,13 +282,16 @@ class VideoPipeline:
         """Tekil bir klip üretir (eski generate metodunun gövdesi)."""
         aspect = _detect_aspect(width, height)
         
-        # 1. Zhipu AI (GLM) API doğrudan entegrasyonu
-        if model == "glm-5.2" and os.getenv("ZHIPU_API_KEY"):
+        # 1. GLM/Z.ai (CogVideoX) — OPT-IN (bütçe koruması): sadece model=glm-5.2 İSTENİRSE.
+        # premium=ürün finali (quality+audio, pahalı); aksi ekonomi (speed, audio'suz, ucuz).
+        _glm_key = os.getenv("ZHIPU_API_KEY") or os.getenv("ZENMUX_API_KEY")
+        if model == "glm-5.2" and _glm_key:
+            premium = os.getenv("ZOM_VIDEO_PREMIUM") == "1"
             result = await asyncio.to_thread(
-                self._try_zhipu_api, prompt, output_path, aspect, duration_sec
+                self._try_zhipu_api, prompt, output_path, aspect, duration_sec, premium
             )
             if result:
-                logger.info(f"[Zhipu API] başarılı: {output_path}")
+                logger.info(f"[GLM/Z.ai] başarılı ({'premium' if premium else 'ekonomi'}): {output_path}")
                 return result
 
         # 2. Higgsfield API doğrudan entegrasyonu
