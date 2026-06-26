@@ -162,12 +162,15 @@ class CryptoTradingAgent(BaseDepartmentAgent):
 
     async def simulate_snowball(self, symbol: str = "BTCUSDT", interval: str = "1h",
                                 limit: int = 500, start_equity: float = 5.0,
-                                min_notional: float = 10.0, fee_rate: float = 0.00075,
-                                slippage: float = 0.0005, fast: int = 12, slow: int = 26) -> Dict:
+                                min_notional: float = 10.0, fee_rate: float = None,
+                                slippage: float = 0.0005, fast: int = 12, slow: int = 26,
+                                use_bnb: bool = True) -> Dict:
         """PAPER PROOF: gerçek kline'larla snowball compounding'i simüle eder.
         $5'ten başlar, fee+slippage+min-notional-farkında, equity-scaled sizing + kâr kilitleme.
         Dürüst yörüngeyi (gerçek getiri/gün, min-notional bekleme sayısı) raporlar — kanıt olmadan gerçek para yok."""
         from departments.crypto_trading import quant_engine as _q
+        if fee_rate is None:
+            fee_rate = _q.effective_fee_rate(use_bnb=use_bnb, is_maker=True)  # BNB → 0.075%
         kl = await self.get_binance_klines(symbol, interval, limit)
         if not isinstance(kl, list) or len(kl) < slow + 5:
             return {"error": f"Yetersiz veri ({symbol})"}
@@ -241,7 +244,7 @@ class CryptoTradingAgent(BaseDepartmentAgent):
         eta_2000 = _q.days_to_target(start_equity, 2000.0, daily_rate)
 
         return {
-            "symbol": symbol, "interval": interval,
+            "symbol": symbol, "interval": interval, "fee_rate": fee_rate, "use_bnb": use_bnb,
             "start_equity": start_equity, "final_equity": final_eq, "protected_core": round(protected, 4),
             "total_return_pct": round(total_ret * 100, 2),
             "sim_days": round(days, 1), "realized_daily_rate_pct": round(daily_rate * 100, 4),
@@ -541,6 +544,24 @@ class CryptoTradingAgent(BaseDepartmentAgent):
                         bnb_balance += float(b["free"])
             
             bnb_discount_active = bnb_balance > 0
+
+            # BNB FEE DAVRANIŞI: etkin fee (BNB→%0.075), buffer takviye + fee-kârlılık kapısı
+            from departments.crypto_trading import quant_engine as _qf
+            eff_fee = _qf.effective_fee_rate(use_bnb=bnb_discount_active, is_maker=True)
+            # BNB değerini kabaca USD'ye çevir (BNB~spot), buffer yeterli mi?
+            bnb_usd = 0.0
+            try:
+                _bnb_tk = await self.get_binance_ticker("BNBUSDT")
+                bnb_usd = bnb_balance * float(_bnb_tk.get("price", 0.0))
+            except Exception:
+                pass
+            bnb_buf = _qf.bnb_fee_buffer_check(bnb_usd, usdt_balance + order_val)
+            # Fee-kârlılık kapısı: auto-TP hedefi (+%1.5) round-trip fee'yi karşılıyor mu?
+            tp_target = limit_price * 1.015
+            fee_ok = _qf.is_profitable_after_fees(limit_price, tp_target, eff_fee)
+            if not fee_ok["ok"]:
+                self.logger.warning(f"[{task_id}] Fee-kârlılık kapısı: {fee_ok['reason']} — işlem iptal.")
+                return {"success": False, "error": f"Net kâr yok (fee): {fee_ok['reason']}"}
             
             # 4. zeze_sec Ajanından Güvenlik Audit Onayı İste
             sec_description = (
@@ -588,9 +609,11 @@ class CryptoTradingAgent(BaseDepartmentAgent):
 ## 2️⃣ Risk/Reward ve Kasa Durumu
 - **Kasa Bakiyesi (USDT):** {usdt_balance:.2f} USDT (Talep Edilen: 17$, Gerçek: {usdt_balance:.2f}$)
 - **İşlem Tutarı (USDT):** {order_val:.2f} USDT
-- **BNB Komisyon İndirimi Durumu:** {'AKTİF (BNB Var)' if bnb_discount_active else 'PASİF (BNB Yok)'} (BNB/LDBNB Toplam: {bnb_balance:.6f})
+- **BNB Komisyon İndirimi Durumu:** {'AKTİF (BNB Var)' if bnb_discount_active else 'PASİF (BNB Yok)'} (BNB/LDBNB Toplam: {bnb_balance:.6f} ≈ ${bnb_usd:.2f})
+- **Etkin Komisyon Oranı:** %{eff_fee*100:.4f} ({'BNB+maker' if bnb_discount_active else 'BNB YOK — %25 fazla ödüyorsun!'})
+- **BNB Buffer:** {bnb_buf['action']}{f" — ${bnb_buf.get('buy_bnb_usd',0):.2f} BNB al (indirim sürsün)" if not bnb_buf['sufficient'] else ' (yeterli)'}
+- **Fee-Kârlılık:** TP hareketi %{fee_ok['gross_move_pct']:.2f} > breakeven %{fee_ok['breakeven_pct']:.3f} ✅
 - **Risk/Ödül Oranı:** 1.50 (Hedef Kar Al: %2.0, Durdur: %1.0)
-- **Komisyon Oranı Tasarrufu:** BNB indirimi ile %25 tasarruf sağlanmaktadır.
  
 ## 2.5️⃣ Strateji Geçmiş Performans Analizi (Backtest - vectorbt)
 {backtest_res}

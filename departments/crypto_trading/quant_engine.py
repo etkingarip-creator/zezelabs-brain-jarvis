@@ -258,6 +258,58 @@ def twap_slices(total_qty: float, n_slices: int = 4) -> List[float]:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# BNB FEE MOTORU — komisyonu minimize et (küçük-hesabın 1 numaralı düşmanı)
+# ──────────────────────────────────────────────────────────────────────────
+
+# Binance spot temel tarife: %0.1 maker/taker. BNB ile öde → %25 indirim. Maker ek avantaj.
+BASE_FEE = 0.001
+BNB_DISCOUNT = 0.25  # BNB ile ödemede %25 indirim
+
+
+def effective_fee_rate(use_bnb: bool = True, is_maker: bool = True) -> float:
+    """Etkin komisyon. BNB → %25 indirim. Maker (limit) emir taker'dan ucuz/eşit.
+    En iyi: BNB + maker → 0.075%. En kötü: BNB yok + taker → 0.1%."""
+    rate = BASE_FEE
+    if use_bnb:
+        rate *= (1 - BNB_DISCOUNT)  # 0.00075
+    # Temel tarifede maker=taker; BNB indirimi ana kaldıraç. Maker yine de tercih (spread lehine).
+    return round(rate, 6)
+
+
+def is_profitable_after_fees(entry: float, target: float, fee_rate: float,
+                             buffer_mult: float = 1.5) -> Dict:
+    """KÜÇÜK-HESAP KATİLİNİ ENGELLE: beklenen hareket round-trip fee'yi (+tampon) karşılamıyorsa
+    işlemi reddet. '%0.3 hedef - %0.2 fee = hiç' tuzağı."""
+    if entry <= 0:
+        return {"ok": False, "reason": "geçersiz fiyat", "gross_move_pct": 0.0, "fee_cost_pct": 0.0}
+    gross_move = (target - entry) / entry
+    round_trip_fee = 2 * fee_rate  # giriş + çıkış
+    breakeven = round_trip_fee * buffer_mult
+    ok = gross_move > breakeven
+    return {
+        "ok": ok,
+        "gross_move_pct": round(gross_move * 100, 4),
+        "fee_cost_pct": round(round_trip_fee * 100, 4),
+        "breakeven_pct": round(breakeven * 100, 4),
+        "reason": "ok" if ok else f"hareket %{gross_move*100:.3f} ≤ fee+tampon %{breakeven*100:.3f} (net kâr yok)",
+    }
+
+
+def bnb_fee_buffer_check(bnb_value_usd: float, equity_usd: float,
+                         target_pct: float = 0.02, min_pct: float = 0.005) -> Dict:
+    """BNB indirimini SÜRDÜR: BNB biterse fee %0.1'e fırlar. Sermayenin ~%2'si BNB tutulmalı;
+    %0.5 altına inerse takviye et."""
+    if equity_usd <= 0:
+        return {"sufficient": True, "action": "ok", "bnb_pct": 0.0}
+    bnb_pct = bnb_value_usd / equity_usd
+    if bnb_pct < min_pct:
+        need = equity_usd * target_pct - bnb_value_usd
+        return {"sufficient": False, "action": "BNB TAKVİYE ET", "bnb_pct": round(bnb_pct * 100, 3),
+                "buy_bnb_usd": round(max(0.0, need), 2)}
+    return {"sufficient": True, "action": "ok", "bnb_pct": round(bnb_pct * 100, 3)}
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # SNOWBALL COMPOUNDING MOTORU — küçük sermayeyi fee/min-notional-farkında büyüt
 # ──────────────────────────────────────────────────────────────────────────
 
