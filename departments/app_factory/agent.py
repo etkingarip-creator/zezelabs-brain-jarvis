@@ -194,6 +194,24 @@ class AppFactoryAgent(BaseDepartmentAgent):
             task_id = str(uuid.uuid4())
         stages = {}
 
+        # 0. H4 OTONOM GO/NO-GO GATE: zeze_business unit economics'e göre KARAR — kötü ekonomi → BUILD ETME
+        if with_monetization:
+            try:
+                biz = await self.delegate_task("zeze_business", {
+                    "task_id": f"gate-{task_id}", "task_type": "market",
+                    "description": f"Build edilecek app için unit economics ve GO/NO-GO kararı: {goal}"})
+                decision = (biz.get("model", {}) or {}).get("decision", {}) if isinstance(biz, dict) else {}
+                # karar raporda da metin olarak gelebilir; NO-GO geçiyorsa durdur
+                out_text = str(biz.get("output", "")) if isinstance(biz, dict) else ""
+                is_nogo = decision.get("decision") == "NO-GO" or "OTONOM KARAR: NO-GO" in out_text
+                stages["business_gate"] = {"ok": not is_nogo,
+                                           "detail": "GO" if not is_nogo else "NO-GO — kötü unit economics, build iptal"}
+                if is_nogo:
+                    return {"task_id": task_id, "goal": goal, "lifecycle_complete": False,
+                            "stages": stages, "halted_reason": "business_gate NO-GO"}
+            except Exception as e:
+                stages["business_gate"] = {"ok": True, "detail": f"gate atlandı: {e}"}
+
         # 1. KUR + DOĞRULA (pytest gerçek-yeşil)
         built = await self.run_dry_task(goal=goal, task_id=task_id)
         stages["build_verify"] = {"ok": built.success, "detail": built.output[:160]}

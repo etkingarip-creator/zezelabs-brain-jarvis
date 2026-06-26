@@ -86,6 +86,98 @@ def select_monetization(ai_cogs_per_use: float, usage_predictability: str = "de�
             "alternatives": ["flat-rate", "compute-based", "dimensional", "prepaid-credits", "hybrid"]}
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# UNICORN'U AŞMA: duyarlılık + grounded benchmark + güven + otonom karar (H1-H4)
+# ──────────────────────────────────────────────────────────────────────────
+
+# H2 — sektör benchmark bantları (gerçek piyasa aralıkları; girdileri GIGO'dan kurtarır)
+BENCHMARKS = {
+    "saas_b2b":  {"cac": (300, 1200), "churn_monthly_pct": (1, 3),  "gross_margin_pct": (75, 85), "conversion_pct": (1, 4)},
+    "saas_b2c":  {"cac": (20, 120),   "churn_monthly_pct": (3, 8),  "gross_margin_pct": (70, 85), "conversion_pct": (1, 3)},
+    "ai_app":    {"cac": (30, 200),   "churn_monthly_pct": (4, 10), "gross_margin_pct": (50, 75), "conversion_pct": (1, 3)},
+    "marketplace": {"cac": (10, 80),  "churn_monthly_pct": (3, 7),  "gross_margin_pct": (40, 65), "conversion_pct": (1, 5)},
+}
+NEW_ENTRANT_CAPTURE_PCT = (1.0, 5.0)  # yeni giren SAM'in %1-5'ini yakalar (frontier kuralı)
+
+
+def get_benchmark(industry: str = "ai_app") -> Dict:
+    """Sektör benchmark bandı + orta nokta varsayılanları (tahmin yerine veri-temelli girdi)."""
+    bands = BENCHMARKS.get(industry, BENCHMARKS["ai_app"])
+    mid = {k: round((lo + hi) / 2, 2) for k, (lo, hi) in bands.items()}
+    return {"industry": industry, "bands": bands, "midpoints": mid,
+            "capture_pct_band": NEW_ENTRANT_CAPTURE_PCT}
+
+
+def label_confidence(llm_keys: List[str], benchmark_keys: List[str] = None) -> Dict:
+    """H3 — 3-katmanlı güven: gerçek-veri (LLM/web) / benchmark / tahmin. Şeffaflık = güven.
+    Ağırlık: gerçek-veri 1.0, benchmark 0.5, tahmin 0."""
+    benchmark_keys = set(benchmark_keys or [])
+    llm_keys = set(llm_keys or [])
+    keys = ["price_monthly", "cac", "churn_monthly_pct", "conversion_pct", "gross_margin_pct", "ai_cogs_monthly"]
+    labels = {}
+    score = 0.0
+    for k in keys:
+        if k in llm_keys:
+            labels[k] = "gerçek-veri"; score += 1.0
+        elif k in benchmark_keys:
+            labels[k] = "benchmark"; score += 0.5
+        else:
+            labels[k] = "tahmin"
+    confidence = round(score / len(keys) * 100)
+    level = "yüksek" if confidence >= 67 else ("orta" if confidence >= 34 else "DÜŞÜK")
+    return {"labels": labels, "confidence_pct": confidence, "level": level,
+            "warning": "Girdiler çoğunlukla benchmark/tahmin — temkinli yaklaş" if confidence < 50 else ""}
+
+
+def sensitivity(price_monthly: float, gross_margin_pct: float, cac: float,
+                churn_monthly_pct: float, ai_cogs_monthly: float = 0.0) -> Dict:
+    """H1 — tek sayı değil ARALIK + duyarlılık. Sürücüleri ±%40 oynatıp LTV/CAC'a etkisini ölç
+    (tornado). En kötü senaryo da raporlanır (kırılganlık görünür)."""
+    base = unit_economics(price_monthly, gross_margin_pct, cac, churn_monthly_pct, ai_cogs_monthly)
+    base_ratio = base.get("ltv_cac_ratio", 0) if base.get("valid") else 0
+
+    def ratio(cac_m=1.0, churn_m=1.0, price_m=1.0, cogs_m=1.0):
+        u = unit_economics(price_monthly * price_m, gross_margin_pct, cac * cac_m,
+                           churn_monthly_pct * churn_m, ai_cogs_monthly * cogs_m)
+        return u.get("ltv_cac_ratio", 0) if u.get("valid") else 0
+
+    drivers = {
+        "CAC +%40": ratio(cac_m=1.4), "churn +%40": ratio(churn_m=1.4),
+        "fiyat -%40": ratio(price_m=0.6), "AI COGS +%40": ratio(cogs_m=1.4),
+    }
+    # en duyarlı sürücü = base'den en çok uzaklaştıran
+    tornado = sorted(drivers.items(), key=lambda kv: abs(kv[1] - base_ratio), reverse=True)
+    worst = min([base_ratio] + list(drivers.values()))
+    best = ratio(cac_m=0.7, churn_m=0.7)  # iyi senaryo
+    return {
+        "base_ltv_cac": base_ratio,
+        "best_case_ltv_cac": round(best, 2),
+        "worst_case_ltv_cac": round(worst, 2),
+        "most_sensitive_driver": tornado[0][0] if tornado else None,
+        "tornado": {k: round(v, 2) for k, v in drivers.items()},
+        "robust": worst >= 3.0,  # en kötü senaryoda bile sağlıklı mı (dayanıklılık)
+    }
+
+
+def go_no_go(unit_econ: Dict, sens: Dict = None) -> Dict:
+    """H4 — OTONOM KARAR (rapor değil): holding bu app'i yapmalı mı? Kötü unit economics → NO-GO.
+    app_factory bu karara göre build eder/etmez. Rakipler 'analiz' verir; biz KARAR veririz."""
+    if not unit_econ.get("valid"):
+        return {"decision": "NO-GO", "reasons": ["geçersiz unit economics (girdi yetersiz)"]}
+    reasons = []
+    if unit_econ.get("net_contribution_monthly", 0) <= 0:
+        reasons.append("Net katkı ≤ 0 (AI COGS fiyatı aşıyor — her müşteri zarar)")
+    if unit_econ.get("ltv_cac_ratio", 0) < 3:
+        reasons.append(f"LTV/CAC {unit_econ.get('ltv_cac_ratio')} < 3 (sürdürülemez)")
+    pb = unit_econ.get("payback_months")
+    if pb is None or pb > 18:
+        reasons.append(f"Payback {pb} ay > 18 (nakit yakar)")
+    if sens and not sens.get("robust", True):
+        reasons.append(f"En kötü senaryoda LTV/CAC {sens.get('worst_case_ltv_cac')} < 3 (kırılgan)")
+    decision = "GO" if not reasons else "NO-GO"
+    return {"decision": decision, "reasons": reasons or ["unit economics sağlıklı + dayanıklı"]}
+
+
 def break_even(fixed_monthly: float, net_contribution_per_customer: float) -> Dict:
     """Başa-baş müşteri sayısı: sabit maliyet / müşteri başı net katkı."""
     if net_contribution_per_customer <= 0:
