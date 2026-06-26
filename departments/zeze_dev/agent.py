@@ -314,7 +314,7 @@ class ZezeDevAgent(BaseDepartmentAgent):
         success = False
         # regresyon kapsamı: aday + çağıran dosyaların dizinleri (E2 — sadece tek klasör değil)
         regression_scope = list(dict.fromkeys(ranked + list(ref_files)))
-        for attempt in range(3):
+        for attempt in range(4):  # 0-1 yerel, 2-3 buluta escalation
             edit_prompt = (
                 f"ISSUE: {description}\n\nİLGİLİ KOD:{file_ctx}\n\n"
                 f"Issue'yu çözen CERRAHI düzenleme(ler)i ver. İmza/davranış değişiyorsa ÇAĞIRANLARI da "
@@ -322,7 +322,12 @@ class ZezeDevAgent(BaseDepartmentAgent):
                 f"SADECE JSON: {{\"edits\": [{{\"path\": \"...\", \"old_string\": \"...\", \"new_string\": \"...\", \"explanation\": \"...\"}}]}}"
                 + (f"\n\n[ÖNCEKI DENEME BAŞARISIZ: {last['raw'][:700]}]" if attempt else "")
             )
-            edit_resp = await self.ask_llm(edit_prompt, system_prompt="Sen kıdemli mühendissin. Minimal, cerrahi, çok-dosya tutarlı düzeltme yaparsın. Bütün dosyayı değil gereken satırları değiştirirsin; imza değişince çağıranları da güncellersin.")
+            # Yerel-önce, takılınca buluta ESCALATION (bütçe-korumalı: sadece zor vakada)
+            escalate = os.getenv("ZOM_DEV_ESCALATE", "1") == "1"
+            override = "glm-5.2" if (escalate and attempt >= 2) else None
+            if override:
+                self.logger.info(f"[{task_id}] Yerel takıldı → buluta escalation (glm-5.2), deneme {attempt+1}.")
+            edit_resp = await self.ask_llm(edit_prompt, system_prompt="Sen kıdemli mühendissin. Minimal, cerrahi, çok-dosya tutarlı düzeltme yaparsın. Bütün dosyayı değil gereken satırları değiştirirsin; imza değişince çağıranları da güncellersin.", model_override=override)
             try:
                 edits = json.loads(re.search(r'\{.*\}', edit_resp, re.DOTALL).group(0)).get("edits", [])
             except Exception:

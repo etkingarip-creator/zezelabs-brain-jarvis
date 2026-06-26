@@ -230,8 +230,10 @@ class BaseDepartmentAgent:
             f"{self.__class__.__name__} must implement execute_task()"
         )
 
-    async def ask_llm(self, prompt: str, system_prompt: str = "You are a helpful AI assistant.") -> str:
-        """Helper to invoke the centralized LLM client asynchronously."""
+    async def ask_llm(self, prompt: str, system_prompt: str = "You are a helpful AI assistant.",
+                      model_override: str = None) -> str:
+        """Helper to invoke the centralized LLM client asynchronously.
+        model_override: belirli bir modeli zorla (ör. zor görevde buluta escalation)."""
         manifesto = self.load_manifesto()
         if manifesto:
             system_prompt = f"{system_prompt}\n\n[DEPARTMAN MANIFESTOSU]\n{manifesto}"
@@ -251,12 +253,15 @@ class BaseDepartmentAgent:
         if knowledge_context:
             system_prompt = f"{system_prompt}\n\n{knowledge_context}"
 
-        try:
-            # Politika: basit görev → free, karmaşık görev → Z.ai (glm-5.2)
-            from core.ai.model_selector import select_model_for_task
-            model = select_model_for_task(prompt, self.department)
-        except ImportError:
-            model = None
+        if model_override:
+            model = model_override
+        else:
+            try:
+                # Politika: basit görev → free, karmaşık görev → Z.ai (glm-5.2)
+                from core.ai.model_selector import select_model_for_task
+                model = select_model_for_task(prompt, self.department)
+            except ImportError:
+                model = None
 
         return await self.llm.generate(
             prompt,
