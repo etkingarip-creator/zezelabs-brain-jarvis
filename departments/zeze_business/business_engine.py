@@ -100,6 +100,27 @@ BENCHMARKS = {
 NEW_ENTRANT_CAPTURE_PCT = (1.0, 5.0)  # yeni giren SAM'in %1-5'ini yakalar (frontier kuralı)
 
 
+def extract_web_signals(text: str) -> Dict:
+    """I2 — statik benchmark yerine GERÇEK web verisinden sayı çıkar (ücretsiz, canlı-ish).
+    Büyüme %CAGR, pazar büyüklüğü $B/$M, fiyat $X/ay → bulunanlar 'web-grounded' işaretlenir."""
+    import re as _re
+    sig = {}
+    # büyüme oranı (CAGR / growth)
+    g = _re.search(r"(\d{1,2}(?:\.\d)?)\s*%\s*(?:cagr|growth|annual)", text, _re.IGNORECASE)
+    if g:
+        sig["growth_rate_pct"] = float(g.group(1))
+    # pazar büyüklüğü → TAM
+    mk = _re.search(r"\$\s*(\d+(?:\.\d+)?)\s*(billion|trillion|million|b|t|m)\b", text, _re.IGNORECASE)
+    if mk:
+        mult = {"billion": 1e9, "b": 1e9, "trillion": 1e12, "t": 1e12, "million": 1e6, "m": 1e6}[mk.group(2).lower()]
+        sig["top_down_tam_usd"] = float(mk.group(1)) * mult
+    # aylık fiyat
+    pr = _re.search(r"\$\s*(\d+(?:\.\d+)?)\s*(?:/|per\s*)\s*mo", text, _re.IGNORECASE)
+    if pr:
+        sig["price_monthly"] = float(pr.group(1))
+    return sig
+
+
 def get_benchmark(industry: str = "ai_app") -> Dict:
     """Sektör benchmark bandı + orta nokta varsayılanları (tahmin yerine veri-temelli girdi)."""
     bands = BENCHMARKS.get(industry, BENCHMARKS["ai_app"])
