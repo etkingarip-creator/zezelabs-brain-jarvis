@@ -160,6 +160,18 @@ class CryptoTradingAgent(BaseDepartmentAgent):
             return
         await self.record_pnl_for_circuit_breaker(-loss_amount)
 
+    async def get_live_performance(self, symbol: str = None) -> Dict[str, Any]:
+        """P3 — canlı işlem defterinden gerçek win-rate (alpha-decay tespiti için)."""
+        portfolio = await self._load_portfolio()
+        ledger = portfolio.get("trade_ledger", [])
+        if symbol:
+            ledger = [t for t in ledger if t.get("symbol") == symbol]
+        n = len(ledger)
+        if n == 0:
+            return {"win_rate_pct": 0.0, "trades": 0}
+        wins = sum(1 for t in ledger if t.get("win"))
+        return {"win_rate_pct": round(wins / n * 100, 2), "trades": n}
+
     async def _load_portfolio(self) -> Dict[str, Any]:
         async with self.portfolio_lock:
             portfolio_path = os.path.join(self.workspace_root, "departments", "crypto_trading", "paper_state", "portfolio.json")
@@ -361,6 +373,24 @@ class CryptoTradingAgent(BaseDepartmentAgent):
                 if match:
                     win_rate = float(match.group(1))
                     
+            # P3 ALPHA-DECAY KAPISI: canlı win-rate backtest'in çok altındaysa edge öldü
+            decay_multiplier = 1.0
+            try:
+                from departments.crypto_trading import quant_engine as _q
+                live_perf = await self.get_live_performance(symbol)
+                decay = _q.alpha_decay_check(live_perf["win_rate_pct"], win_rate, live_perf["trades"])
+                if decay["decaying"] and decay["action"] == "EMEKLİ ET":
+                    self.logger.warning(f"[{task_id}] P3 alpha-decay: {decay['note']} — işlem iptal.")
+                    return {
+                        "success": False,
+                        "error": f"Alpha-decay kapısı: {decay['note']}. Strateji edge'i öldü, gerçek para korundu.",
+                    }
+                elif decay["decaying"]:
+                    decay_multiplier = 0.5  # zayıflıyor → pozisyonu küçült
+                    self.logger.info(f"[{task_id}] P3 alpha-decay: {decay['note']} — pozisyon yarıya indirildi.")
+            except Exception as _de:
+                self.logger.debug(f"P3 alpha-decay gate skipped: {_de}")
+
             # Q1 OVERFIT KAPISI: backtest 'GÜVENİLMEZ' dediyse gerçek emir GÖNDERME
             if backtest_res and "GÜVENİLMEZ" in str(backtest_res):
                 self.logger.warning(f"[{task_id}] Backtest overfit hükmü GÜVENİLMEZ — işlem iptal.")
@@ -373,7 +403,7 @@ class CryptoTradingAgent(BaseDepartmentAgent):
             # Scale order value dynamically based on backtest performance
             base_order_val = 5.50
             performance_multiplier = max(0.5, min(1.5, win_rate / 50.0))
-            order_val = round(base_order_val * performance_multiplier, 2)
+            order_val = round(base_order_val * performance_multiplier * decay_multiplier, 2)
 
             # Check Daily Drawdown Circuit Breaker
             if await self.is_drawdown_circuit_breaker_active():
@@ -448,8 +478,9 @@ class CryptoTradingAgent(BaseDepartmentAgent):
                     "quantity": f"{qty:.5f}",
                     "price": f"{limit_price:.2f}"
                 }
-                order_result = await self.place_binance_limit_order(order_params)
-                self.logger.info(f"[{task_id}] Limit emir başarıyla gönderildi: {order_result}")
+                # P4 TWAP: büyük emir dilimlenir, küçük emir tek seferde (içeride yönlendirilir)
+                order_result = await self.place_order_twap(order_params)
+                self.logger.info(f"[{task_id}] Emir gönderildi (TWAP-farkında): {order_result}")
             else:
                 order_result = {"error": "Siber Güvenlik (zeze_sec) onayı alınamadı."}
             
@@ -793,6 +824,40 @@ class CryptoTradingAgent(BaseDepartmentAgent):
             balances.append({"asset": asset, "free": str(qty), "locked": "0.0"})
             
         return {"balances": balances, "mode": "paper_trade"}
+
+    async def place_order_twap(self, order_params: dict, twap_threshold_usd: float = 50.0,
+                               n_slices: int = 4) -> dict:
+        """P4 — TWAP execution. Büyük emri (notional > eşik) eşit dilimlere bölerek market
+        impact'i minimize eder. Küçük emir tek seferde gider. Her dilim place_binance_limit_order'dan
+        geçer (tail-risk kapısı dahil)."""
+        from departments.crypto_trading import quant_engine as _q
+        try:
+            qty = float(order_params.get("quantity", 0.0))
+            price = float(order_params.get("price", 0.0))
+        except (ValueError, TypeError):
+            return await self.place_binance_limit_order(order_params)
+        notional = qty * price
+        if notional <= twap_threshold_usd or qty <= 0:
+            return await self.place_binance_limit_order(order_params)  # küçük emir → tek seferde
+
+        slices = _q.twap_slices(qty, n_slices)
+        results = []
+        for i, sl_qty in enumerate(slices):
+            sl_params = dict(order_params)
+            sl_params["quantity"] = f"{sl_qty:.5f}"
+            res = await self.place_binance_limit_order(sl_params)
+            results.append(res)
+            if isinstance(res, dict) and res.get("error") == "TAIL_RISK_HALT":
+                self.logger.warning(f"TWAP dilim {i+1}/{len(slices)} tail-risk ile durdu — kalan iptal.")
+                break
+        ok = [r for r in results if isinstance(r, dict) and "error" not in r]
+        return {
+            "mode": "twap",
+            "slices_total": len(slices),
+            "slices_filled": len(ok),
+            "notional_usd": round(notional, 2),
+            "results": results,
+        }
 
     async def get_binance_klines(self, symbol: str, interval: str = "1h", limit: int = 24) -> list:
         """Gets public historical klines from Binance (async)"""
@@ -1251,6 +1316,11 @@ class CryptoTradingAgent(BaseDepartmentAgent):
                 buy_avg = portfolio.setdefault("cost_basis", {}).get(symbol, exec_price)
                 pnl = qty * (exec_price - buy_avg)
                 await self.record_pnl_for_circuit_breaker(pnl)
+
+                # P3 CANLI İŞLEM DEFTERİ: kapanan işlemin win/loss sonucunu kaydet (alpha-decay için)
+                ledger = portfolio.setdefault("trade_ledger", [])
+                ledger.append({"ts": datetime.now().isoformat(), "symbol": symbol, "win": pnl > 0, "pnl": round(pnl, 4)})
+                portfolio["trade_ledger"] = ledger[-200:]  # son 200 işlem
                 
                 # Remove from TSL positions
                 if "positions" in portfolio and symbol in portfolio["positions"]:
