@@ -28,6 +28,44 @@ class ZezeBusinessAgent(BaseDepartmentAgent):
         default_sp = "Sen ZezeLabs İş Geliştirme ajanısın. Pazar analizi, B2B ortaklık, satış stratejisi üretirsin."
         return await self.dispatch_by_task_type(task_data, routes, default_sp)
 
+    async def _scan_demand(self, problem: str, registry) -> Dict[str, Any]:
+        """GERÇEK talep-keşfi (frontier: 'satılacak ilk 10 kişiyi bul'). Pain-point sorgularıyla
+        gerçek web/forum sinyali tarar — soyut varsayım değil, kanıt. Sinyal yoksa dürüstçe söyler."""
+        # niyet/acı sinyali içeren gerçek sorgular
+        queries = [
+            f"{problem} reddit frustrating problem",
+            f"alternative to {problem} tool",
+            f"best {problem} software 2026 complaints",
+        ]
+        signals = []
+        hits = 0
+        for q in queries:
+            try:
+                res = str(await registry.execute_tool("duckduckgo_search", {"query": q}))
+            except Exception:
+                try:
+                    res = str(await registry.execute_tool("web_search", {"query": q}))
+                except Exception:
+                    res = ""
+            if not res or "error" in res.lower()[:60]:
+                continue
+            # acı/talep sinyali kelimeleri
+            pain = sum(res.lower().count(w) for w in
+                       ["frustrat", "alternative", "hate", "wish", "problem", "complaint", "switch", "expensive", "slow", "best "])
+            hits += pain
+            snippet = res.strip().replace("\n", " ")[:180]
+            if snippet:
+                signals.append({"query": q, "pain_signal": pain, "evidence": snippet})
+        # talep skoru: toplam sinyal kelime yoğunluğu
+        if hits >= 12:
+            level = "güçlü"
+        elif hits >= 4:
+            level = "orta"
+        else:
+            level = "zayıf"
+        return {"demand_level": level, "signal_count": hits, "samples": signals[:3],
+                "note": "Gerçek web/forum pain-point sinyali" if hits else "Belirgin talep sinyali bulunamadı (temkinli ol)"}
+
     async def _handle_market_analysis(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         task_id = self._safe_task_id(task_data)
         description = task_data.get("description", "") or ""
@@ -107,10 +145,15 @@ class ZezeBusinessAgent(BaseDepartmentAgent):
                               _num("churn_monthly_pct", 5), _num("ai_cogs_monthly"))
         benchmark_filled = [k for k in bench_map if k not in llm_keys]
         conf = be.label_confidence(list(llm_keys), benchmark_filled)
+        # I1 — GERÇEK talep-keşfi (kanıt). Talep zayıfsa karara temkin ekle.
+        demand = await self._scan_demand(description, registry)
         decision = be.go_no_go(ue, sens)
+        if demand["demand_level"] == "zayıf" and decision["decision"] == "GO":
+            decision = {"decision": "GO (temkinli)",
+                        "reasons": decision["reasons"] + ["⚠️ Talep sinyali zayıf — önce gerçek müşteri doğrulaması yap"]}
         model.update({"unit_economics": ue, "bottom_up_som": som, "top_down_tam_usd": tam,
                       "reconciliation": reco, "monetization": mon, "sensitivity": sens,
-                      "confidence": conf, "decision": decision})
+                      "confidence": conf, "decision": decision, "demand": demand})
         # G4 ANTİ-SAHTE-YEŞİL: motor geçerli unit economics üretemezse başarı sayma
         analysis_valid = ue.get("valid", False) and som["paying_customers"] >= 0
 
@@ -156,6 +199,8 @@ class ZezeBusinessAgent(BaseDepartmentAgent):
             f"{model['sensitivity']['base_ltv_cac']} / {model['sensitivity']['worst_case_ltv_cac']}\n"
             f"- En duyarlı sürücü: {model['sensitivity']['most_sensitive_driver']} | Dayanıklı: "
             f"{'✅' if model['sensitivity']['robust'] else '❌ kırılgan'}\n\n"
+            f"## Gerçek Talep Kanıtı (web/forum)\n"
+            f"- Talep sinyali: **{model['demand']['demand_level']}** ({model['demand']['signal_count']} sinyal) — {model['demand']['note']}\n\n"
             f"## Monetizasyon\n- **Model:** {mon['recommended_model']}\n  - {mon['rationale']}\n\n"
             f"## Güven (şeffaflık)\n- Girdi güveni: %{model['confidence']['confidence_pct']} "
             f"({model['confidence']['level']}) {model['confidence']['warning']}\n\n"
