@@ -164,7 +164,9 @@ class CryptoTradingAgent(BaseDepartmentAgent):
                                 limit: int = 500, start_equity: float = 5.0,
                                 min_notional: float = 10.0, fee_rate: float = None,
                                 slippage: float = 0.0005, fast: int = 12, slow: int = 26,
-                                use_bnb: bool = True) -> Dict:
+                                use_bnb: bool = True, strategy: str = "ma_cross",
+                                drop_pct: float = 0.03, rise_pct: float = 0.03,
+                                ref_window: int = 24) -> Dict:
         """PAPER PROOF: gerçek kline'larla snowball compounding'i simüle eder.
         $5'ten başlar, fee+slippage+min-notional-farkında, equity-scaled sizing + kâr kilitleme.
         Dürüst yörüngeyi (gerçek getiri/gün, min-notional bekleme sayısı) raporlar — kanıt olmadan gerçek para yok."""
@@ -193,14 +195,24 @@ class CryptoTradingAgent(BaseDepartmentAgent):
         peak = equity
         max_dd = 0.0
 
-        for i in range(slow, n):
-            f_now, s_now = sma(closes, fast, i), sma(closes, slow, i)
-            f_prev, s_prev = sma(closes, fast, i - 1), sma(closes, slow, i - 1)
-            if None in (f_now, s_now, f_prev, s_prev):
-                continue
+        start_idx = ref_window if strategy == "threepct" else slow
+        for i in range(start_idx, n):
             price = closes[i]
-            golden = f_prev <= s_prev and f_now > s_now   # al
-            death = f_prev >= s_prev and f_now < s_now    # sat
+            if strategy == "threepct":
+                # −%X al / +%Y sat (mean-reversion). Referans: son ref_window mumun tepesi.
+                ref_high = max(closes[i - ref_window:i]) if i >= ref_window else price
+                drop_from_high = (ref_high - price) / ref_high if ref_high > 0 else 0.0
+                # düşen-bıçak koruması: ani çöküşte (tail-risk) DİP ALMA
+                tail = _q.tail_risk_check(closes[max(0, i - 5):i + 1], symbol)
+                golden = (not in_pos) and (drop_from_high >= drop_pct) and (not tail["halt"])
+                death = in_pos and entry_px > 0 and ((price - entry_px) / entry_px) >= rise_pct
+            else:
+                f_now, s_now = sma(closes, fast, i), sma(closes, slow, i)
+                f_prev, s_prev = sma(closes, fast, i - 1), sma(closes, slow, i - 1)
+                if None in (f_now, s_now, f_prev, s_prev):
+                    continue
+                golden = f_prev <= s_prev and f_now > s_now   # al
+                death = f_prev >= s_prev and f_now < s_now    # sat
 
             if not in_pos and golden:
                 stop = price * 0.98  # %2 stop (snowball: küçük risk)
@@ -245,6 +257,7 @@ class CryptoTradingAgent(BaseDepartmentAgent):
 
         return {
             "symbol": symbol, "interval": interval, "fee_rate": fee_rate, "use_bnb": use_bnb,
+            "strategy": strategy, "drop_pct": drop_pct, "rise_pct": rise_pct,
             "start_equity": start_equity, "final_equity": final_eq, "protected_core": round(protected, 4),
             "total_return_pct": round(total_ret * 100, 2),
             "sim_days": round(days, 1), "realized_daily_rate_pct": round(daily_rate * 100, 4),
@@ -1073,6 +1086,62 @@ class CryptoTradingAgent(BaseDepartmentAgent):
             "origQty": new_order["quantity"],
             "mode": "paper_trade",
             "msg": "Limit order registered in paper trading ledger with balance locks."
+        }
+
+    async def get_top_movers(self, top_n: int = 10, min_volume_usd: float = 5_000_000.0) -> List[Dict]:
+        """En hareketli coinler: 24s hacim + volatilite (|fiyat değişimi %|). Likidite filtreli.
+        Döner: [{symbol, change_pct, quote_volume_usd, score}] — score = volatilite × log(hacim)."""
+        import math as _m
+        tickers = await self._binance_request("GET", "/api/v3/ticker/24hr")
+        if not isinstance(tickers, list):
+            return []
+        stables = {"USDCUSDT", "FDUSDUSDT", "BUSDUSDT", "TUSDUSDT", "USDPUSDT", "EURUSDT", "AEURUSDT"}
+        rows = []
+        for t in tickers:
+            sym = t.get("symbol", "")
+            if not sym.endswith("USDT") or sym in stables:
+                continue
+            try:
+                vol = float(t.get("quoteVolume", 0.0))
+                chg = float(t.get("priceChangePercent", 0.0))
+            except (ValueError, TypeError):
+                continue
+            if vol < min_volume_usd:
+                continue
+            # hareketlilik skoru: volatilite (mutlak değişim) × likidite (log hacim)
+            score = abs(chg) * _m.log10(vol + 10)
+            rows.append({"symbol": sym, "change_pct": round(chg, 2),
+                         "quote_volume_usd": round(vol, 0), "score": round(score, 2)})
+        rows.sort(key=lambda r: r["score"], reverse=True)
+        return rows[:top_n]
+
+    async def get_active_hours(self, symbol: str = "BTCUSDT", days: int = 14) -> Dict:
+        """Borsanın en hareketli saatleri (UTC): geçmiş hacmi saat-dilimine göre topla.
+        Kripto 7/24 ama hacim US/EU çakışmasında zirve yapar. Döner: {peak_hours, hourly_avg}."""
+        kl = await self.get_binance_klines(symbol, "1h", min(days * 24, 720))
+        if not isinstance(kl, list) or len(kl) < 24:
+            return {"error": "yetersiz veri"}
+        from collections import defaultdict
+        from datetime import datetime, timezone
+        buckets = defaultdict(list)
+        for k in kl:
+            try:
+                ts = int(k[0]) / 1000.0
+                hour = datetime.fromtimestamp(ts, tz=timezone.utc).hour
+                buckets[hour].append(float(k[7]))  # quote asset volume
+            except (ValueError, TypeError, IndexError):
+                continue
+        hourly = {h: round(sum(v) / len(v), 0) for h, v in buckets.items() if v}
+        if not hourly:
+            return {"error": "veri işlenemedi"}
+        avg = sum(hourly.values()) / len(hourly)
+        peak = sorted(hourly.items(), key=lambda x: x[1], reverse=True)[:4]
+        return {
+            "symbol": symbol,
+            "peak_hours_utc": [h for h, _ in peak],
+            "peak_hours_local_tr": [(h + 3) % 24 for h, _ in peak],  # TR = UTC+3
+            "hourly_avg_volume": hourly,
+            "is_now_active": (datetime.now(timezone.utc).hour in [h for h, v in hourly.items() if v > avg]),
         }
 
     async def get_active_altcoins(self) -> List[str]:
