@@ -51,17 +51,50 @@ class MediaFactoryAgent(BaseDepartmentAgent):
     department = "media_factory"
 
     async def produce_sleep_story(self, topic: str, target_minutes: int = 5,
-                                  niche: str = "history") -> Dict[str, Any]:
-        """MOD 2 — uyku hikayesi (60-120dk tarih/gizem). Uzun sakin narration + ambient + yavaş-pan."""
-        import os as _os
+                                  niche: str = "history", with_visuals: bool = True,
+                                  scene_count: int = 3) -> Dict[str, Any]:
+        """MOD 2 — uyku hikayesi (60-120dk tarih/gizem). Uzun anlatıcı narration + ACE-Step
+        ambient + konuya uygun GERÇEK GLM görselleri (yavaş-pan). with_visuals=False → düz zemin."""
+        import os as _os, asyncio as _aio, subprocess as _sp
         from departments.media_factory.sleep_story import build_sleep_story
-        out = _os.path.join(self.workspace_root, "departments", self.department, "reports",
-                            f"sleep_{abs(hash(topic)) % 10000}.mp4")
-        _os.makedirs(_os.path.dirname(out), exist_ok=True)
-        res = await build_sleep_story(self.ask_llm, topic, out, target_minutes=target_minutes)
+        rep = _os.path.join(self.workspace_root, "departments", self.department, "reports")
+        _os.makedirs(rep, exist_ok=True)
+        out = _os.path.join(rep, f"sleep_{abs(hash(topic)) % 10000}.mp4")
+
+        visuals = None
+        if with_visuals and self._video_pipeline:
+            # Konuya uygun sahne tarifleri üret (atmosferik, sinematik, sakin)
+            sc_resp = await self.ask_llm(
+                prompt=f"'{topic}' uyku belgeseli için {scene_count} atmosferik sinematik sahne tarifi (İngilizce, "
+                       f"sakin, görkemli). SADECE JSON: {{\"scenes\":[\"...\"]}}",
+                system_prompt="Sinematik sahne yönetmenisin. Sakin, atmosferik, belgesel tarzı.")
+            try:
+                import json as _json, re as _re
+                scenes = _json.loads(_re.search(r'\{.*\}', sc_resp, _re.DOTALL).group(0)).get("scenes", [])
+            except Exception:
+                scenes = [f"{topic}, cinematic atmospheric wide shot, calm, documentary"]
+            scenes = scenes[:scene_count] or [topic]
+            paths = [_os.path.join(rep, f"sl_sc{i}.mp4") for i in range(len(scenes))]
+
+            async def _g(pr, pa):
+                return await self._video_pipeline.generate(prompt=pr + ", cinematic, calm, slow, documentary",
+                                                           output_path=pa, width=1920, height=1080,
+                                                           duration_sec=5, model="glm-5.2")
+            await _aio.gather(*[_g(scenes[i], paths[i]) for i in range(len(scenes))], return_exceptions=True)
+            ok = [p for p in paths if _os.path.exists(p)]
+            if ok:
+                visuals = _os.path.join(rep, "sl_concat.mp4")
+                lst = _os.path.join(rep, "sl_list.txt")
+                with open(lst, "w") as f:
+                    f.write("".join(f"file '{p}'\n" for p in ok))
+                _sp.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
+                         "-c:v", "libx264", "-pix_fmt", "yuv420p", visuals], capture_output=True, timeout=120)
+
+        res = await build_sleep_story(self.ask_llm, topic, out, target_minutes=target_minutes, visuals_video=visuals)
         if not res:
             return {"success": False, "error": "sleep story üretilemedi"}
-        return {"success": True, "mode": "sleep_story", "topic": topic, "niche": niche, **res}
+        return {"success": True, "mode": "sleep_story", "topic": topic, "niche": niche,
+                "real_visuals": bool(visuals), **res}
 
     async def produce_short(self, topic: str, with_video: bool = False,
                             premium_video: bool = False) -> Dict[str, Any]:

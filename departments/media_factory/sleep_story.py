@@ -49,7 +49,9 @@ async def _gen_long_script(ask_llm, topic: str, target_minutes: int) -> str:
 
 async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minutes: int = 5,
                             visuals_video: Optional[str] = None,
-                            voice: str = "en-US-GuyNeural") -> Optional[dict]:
+                            voice: str = "en-US-ChristopherNeural") -> Optional[dict]:
+    # Karizmatik anlatıcı sesi (Christopher: sıcak/derin/özgüvenli storyteller).
+    # Tarih/belgesel için alternatif: en-GB-RyanNeural (Attenborough-vari İngiliz).
     """Uyku hikayesi videosu: uzun sakin narration + ambient müzik + yavaş-pan görsel."""
     from departments.media_factory.narrated_video import _ffprobe_duration, _make_music_bed
     workdir = tempfile.mkdtemp(prefix="sleep_")
@@ -66,7 +68,7 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
     for i, p in enumerate(paras):
         ap = os.path.join(workdir, f"a{i}.mp3")
         try:
-            await edge_tts.Communicate(p, voice, rate="-12%").save(ap)  # yavaş tempo
+            await edge_tts.Communicate(p, voice, rate="-8%", pitch="-2Hz").save(ap)  # sakin ama monoton değil, anlatıcı
             if os.path.exists(ap) and os.path.getsize(ap) > 0:
                 audio_parts.append(ap)
         except Exception:
@@ -83,20 +85,22 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
     if dur <= 0:
         return None
 
-    # 3. Ambient müzik (ACE-Step gerçek, yoksa sentez) — çok altta (uyku)
+    # 3. Ambient müzik: ACE-Step'ten KISA (30sn) üret, ffmpeg ile döngüle (uzun süre için hızlı).
     music = os.path.join(workdir, "ambient.wav")
     has_music = False
+    music_src = "yok"
     try:
         from departments.media_factory.music_engine import is_available, generate_music
         if is_available():
             mp = os.path.join(workdir, "ace.mp3")
-            if generate_music("calm ambient sleep music, soft pads, slow, peaceful, no drums",
-                              mp, duration=int(dur) + 5):
-                music, has_music = mp, True
+            if generate_music("calm ambient sleep music, soft warm pads, slow, peaceful, no drums, dreamy",
+                              mp, duration=30, poll_timeout=180):
+                music, has_music, music_src = mp, True, "ace-step"
     except Exception:
         pass
     if not has_music:
         has_music = _make_music_bed(music, dur)
+        music_src = "sentez" if has_music else "yok"
 
     # 4. Görsel: sakin yavaş-pan (yoksa düz koyu zemin), uzun süreye döngü
     if not (visuals_video and os.path.exists(visuals_video)):
@@ -112,9 +116,10 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
               "zoompan=z='min(zoom+0.0002,1.10)':d=1:s=1920x1080:fps=24[v]")
     cmd = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", visuals_video, "-i", voice_mp3]
     if has_music:
-        cmd += ["-i", music,
+        # müziği de döngüle (kısa ambient → tüm süreye yayılır)
+        cmd += ["-stream_loop", "-1", "-i", music,
                 "-filter_complex", vchain + ";[1:a]volume=1.0,aresample=44100[vo];"
-                "[2:a]volume=0.10,aresample=44100[mu];[vo][mu]amix=inputs=2:duration=first[a]"]
+                "[2:a]volume=0.16,aresample=44100[mu];[vo][mu]amix=inputs=2:duration=first[a]"]
     else:
         cmd += ["-filter_complex", vchain + ";[1:a]aresample=44100[a]"]
     cmd += ["-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}",
@@ -123,7 +128,7 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if r.returncode == 0 and os.path.exists(output_path):
             return {"path": output_path, "duration_sec": round(dur, 1),
-                    "words": len(script.split()), "music": "ace-step" if (has_music and "ace" in music) else "sentez"}
+                    "words": len(script.split()), "music": music_src}
         return None
     except Exception:
         return None
