@@ -123,7 +123,21 @@ async def build_narrated_video(segments: List[Dict], output_path: str, visuals_v
         return None
 
     music_path = os.path.join(workdir, "music.wav")
-    has_music = music and _make_music_bed(music_path, dur)
+    has_music = False
+    if music:
+        # Önce ACE-Step (gerçek müzik/şarkı, yerel ücretsiz); yoksa sentez yatak
+        try:
+            from departments.media_factory.music_engine import generate_music, is_available
+            if is_available():
+                mp = os.path.join(workdir, "ace.mp3")
+                if generate_music(music if isinstance(music, str) else "upbeat background music, cinematic",
+                                  mp, duration=int(dur) + 2):
+                    music_path = mp
+                    has_music = True
+        except Exception:
+            pass
+        if not has_music:
+            has_music = _make_music_bed(music_path, dur)
 
     ass_esc = ass.replace("\\", "/").replace(":", "\\:")
     # filter_complex: video (scale+crop+kenburns+altyazı) + ses (voice + opsiyonel müzik mix)
