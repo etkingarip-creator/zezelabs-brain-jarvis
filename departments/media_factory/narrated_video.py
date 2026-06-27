@@ -34,12 +34,12 @@ def _ass_time(sec: float) -> str:
     return f"{h:d}:{m:02d}:{s:05.2f}"
 
 
-def _wrap(text: str, width: int = 24) -> str:
-    """Uzun satırı kısa parçalara böl (mobil okunabilirlik — tek satıra sığsın)."""
+def _wrap(text: str, width: int = 16) -> str:
+    """Uzun satırı kısa parçalara böl (taşmayı önle — büyük fontta dar sar)."""
     words = text.split()
     lines, cur = [], ""
     for wd in words:
-        if len(cur) + len(wd) + 1 > width:
+        if cur and len(cur) + len(wd) + 1 > width:
             lines.append(cur); cur = wd
         else:
             cur = (cur + " " + wd).strip()
@@ -60,8 +60,8 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV
-Style: Body,Arial,72,&H00FFFFFF,&H00000000,&H64000000,1,1,5,3,2,80,80,420
-Style: Hook,Arial,92,&H0000F2FF,&H00000000,&H78000000,1,1,6,4,2,60,60,520
+Style: Body,Arial,52,&H00FFFFFF,&H00000000,&H64000000,1,1,4,2,2,120,120,360
+Style: Hook,Arial,64,&H0000F2FF,&H00000000,&H78000000,1,1,5,3,2,120,120,440
 """
     weights = [max(1, len(s.get("en", ""))) for s in segments]
     tot = sum(weights) or 1
@@ -79,7 +79,8 @@ Style: Hook,Arial,92,&H0000F2FF,&H00000000,&H78000000,1,1,6,4,2,60,60,520
 
 
 async def synth_voice_en(text: str, mp3_path: str, voice: str = "en-US-GuyNeural") -> bool:
-    """İngilizce neural seslendirme (edge-tts, ücretsiz)."""
+    """İngilizce neural seslendirme (edge-tts, ücretsiz). voice ile ses değişir
+    (çocuk içeriği: en-US-AnaNeural neşeli/çocuk sesi)."""
     try:
         import edge_tts
         comm = edge_tts.Communicate(text, voice)
@@ -89,40 +90,56 @@ async def synth_voice_en(text: str, mp3_path: str, voice: str = "en-US-GuyNeural
         return False
 
 
-async def build_narrated_video(segments: List[Dict], output_path: str,
-                               visuals_video: str, aspect: str = "9:16") -> Optional[str]:
-    """Tam birleştirme: EN ses + görsel + TR altyazı → tek MP4.
-    segments: [{en, tr}]. visuals_video: önceden üretilmiş (sessiz) görsel MP4."""
+def _make_music_bed(path: str, duration: float) -> bool:
+    """Neşeli yumuşak müzik yatağı (ffmpeg sentez — C-major akor + tremolo). Şarkı hissi."""
+    try:
+        # C(261.63)+E(329.63)+G(392) majör akor, hafif tremolo, yumuşak
+        expr = ("sine=frequency=261.63:duration=%.1f[c];sine=frequency=329.63:duration=%.1f[e];"
+                "sine=frequency=392:duration=%.1f[g];[c][e][g]amix=inputs=3,"
+                "tremolo=f=4:d=0.4,volume=0.5" % (duration, duration, duration))
+        r = subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", expr, "-t", f"{duration:.2f}", path],
+                           capture_output=True, text=True, timeout=60)
+        return r.returncode == 0 and os.path.exists(path)
+    except Exception:
+        return False
+
+
+async def build_narrated_video(segments: List[Dict], output_path: str, visuals_video: str,
+                               aspect: str = "9:16", voice: str = "en-US-GuyNeural",
+                               music: bool = False) -> Optional[str]:
+    """Tam birleştirme: EN ses (+opsiyonel müzik) + görsel + TR altyazı → tek MP4."""
     workdir = tempfile.mkdtemp(prefix="narr_")
     audio = os.path.join(workdir, "voice.mp3")
     ass = os.path.join(workdir, "subs.ass")
     en_text = " ".join(s.get("en", "") for s in segments).strip()
 
-    if not await synth_voice_en(en_text, audio):
+    if not await synth_voice_en(en_text, audio, voice):
         return None
     dur = _ffprobe_duration(audio)
     if dur <= 0:
         return None
     build_ass(segments, dur, ass)
-
     if not (visuals_video and os.path.exists(visuals_video)):
         return None
 
-    # Ken Burns (yavaş zoom) hareket + stillendirilmiş ASS altyazı + EN ses bindirme
+    music_path = os.path.join(workdir, "music.wav")
+    has_music = music and _make_music_bed(music_path, dur)
+
     ass_esc = ass.replace("\\", "/").replace(":", "\\:")
-    vf = (f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-          f"zoompan=z='min(zoom+0.0008,1.18)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30,"
-          f"ass='{ass_esc}'")
-    cmd = [
-        "ffmpeg", "-y",
-        "-stream_loop", "-1", "-i", visuals_video,   # görseli döngüle
-        "-i", audio,                                  # EN ses
-        "-vf", vf,
-        "-map", "0:v:0", "-map", "1:a:0",
-        "-t", f"{dur:.2f}", "-c:v", "libx264", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-shortest",
-        output_path,
-    ]
+    # filter_complex: video (scale+crop+kenburns+altyazı) + ses (voice + opsiyonel müzik mix)
+    vchain = (f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+              f"zoompan=z='min(zoom+0.0008,1.18)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30,"
+              f"ass='{ass_esc}'[v]")
+    cmd = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", visuals_video, "-i", audio]
+    if has_music:
+        cmd += ["-i", music_path]
+        fc = (vchain + ";[1:a]volume=1.0,aresample=44100[vo];[2:a]volume=0.16,aresample=44100[mu];"
+              "[vo][mu]amix=inputs=2:duration=first:dropout_transition=0[a]")
+    else:
+        fc = vchain + ";[1:a]aresample=44100[a]"
+    cmd += ["-filter_complex", fc, "-map", "[v]", "-map", "[a]",
+            "-t", f"{dur:.2f}", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k", "-ar", "44100", output_path]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         if r.returncode == 0 and os.path.exists(output_path):
