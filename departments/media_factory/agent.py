@@ -53,7 +53,7 @@ class MediaFactoryAgent(BaseDepartmentAgent):
     async def produce_sleep_story(self, topic: str, target_minutes: int = 5,
                                   niche: str = "history", with_visuals: bool = True,
                                   scene_count: int = 3, reuse_visuals: bool = False,
-                                  sfx_prompt: str = None) -> Dict[str, Any]:
+                                  sfx_prompt: str = None, lang: str = "en") -> Dict[str, Any]:
         """MOD 2 — uyku hikayesi. Anlatıcı narration + ACE-Step müzik + senaryo SFX + görsel.
         reuse_visuals=True → mevcut sl_concat.mp4'ü kullan (GLM'e dokunma, bütçe)."""
         import os as _os, asyncio as _aio, subprocess as _sp
@@ -94,7 +94,7 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                          "-c:v", "libx264", "-pix_fmt", "yuv420p", visuals], capture_output=True, timeout=120)
 
         res = await build_sleep_story(self.ask_llm, topic, out, target_minutes=target_minutes,
-                                      visuals_video=visuals,
+                                      visuals_video=visuals, lang=lang,
                                       sfx_prompt=sfx_prompt or f"atmospheric ambient soundscape for {topic}, immersive, soft")
         if not res:
             return {"success": False, "error": "sleep story üretilemedi"}

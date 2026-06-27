@@ -19,17 +19,18 @@ SLEEP_NICHES = ["tarih (history to sleep to)", "çözülmemiş gizemler", "uzay/
                 "antik medeniyetler", "okyanus derinlikleri", "kayıp şehirler"]
 
 
-async def _gen_long_script(ask_llm, topic: str, target_minutes: int) -> str:
-    """Sakin, monoton-dostu uzun narration üret. ~150 kelime/dk → parça parça (uzun için döngü)."""
+async def _gen_long_script(ask_llm, topic: str, target_minutes: int, lang: str = "en") -> str:
+    """Sakin, monoton-dostu uzun narration üret. ~145 kelime/dk → parça parça (uzun için döngü)."""
     target_words = target_minutes * 145
     chunks: List[str] = []
     words_so_far = 0
     prev = ""
+    dil = "TÜRKÇE" if lang == "tr" else "İngilizce"
     while words_so_far < target_words:
         remaining = target_words - words_so_far
         ask = min(700, remaining)
         prompt = (
-            f"Uyku/dinlenme videosu için SAKİN, monoton, yavaş tempolu anlatı yaz (İngilizce). "
+            f"Uyku/dinlenme videosu için SAKİN, monoton, yavaş tempolu anlatı yaz ({dil}). "
             f"Konu: {topic} (niş: uykuda dinlenecek tarih/gizem). ~{ask} kelime. "
             f"Heyecan/şok YOK — yumuşak, hipnotik, uyutucu akış. Bölüm başlığı/işaret yok, düz anlatı.\n"
             + (f"ÖNCEKİ KISMIN SONU (devam et, tekrarlama):\n...{prev[-300:]}" if prev else "Baştan başla.")
@@ -49,8 +50,11 @@ async def _gen_long_script(ask_llm, topic: str, target_minutes: int) -> str:
 
 async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minutes: int = 5,
                             visuals_video: Optional[str] = None,
-                            voice: str = "en-US-ChristopherNeural",
-                            sfx_prompt: Optional[str] = None) -> Optional[dict]:
+                            voice: Optional[str] = None,
+                            sfx_prompt: Optional[str] = None, lang: str = "en") -> Optional[dict]:
+    # Dile göre anlatıcı sesi: TR → tr-TR-AhmetNeural (karizmatik erkek), EN → Christopher
+    if voice is None:
+        voice = "tr-TR-AhmetNeural" if lang == "tr" else "en-US-ChristopherNeural"
     # Karizmatik anlatıcı sesi (Christopher: sıcak/derin/özgüvenli storyteller).
     # Tarih/belgesel için alternatif: en-GB-RyanNeural (Attenborough-vari İngiliz).
     """Uyku hikayesi videosu: uzun sakin narration + ambient müzik + yavaş-pan görsel."""
@@ -58,7 +62,7 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
     workdir = tempfile.mkdtemp(prefix="sleep_")
 
     # 1. Uzun narration
-    script = await _gen_long_script(ask_llm, topic, target_minutes)
+    script = await _gen_long_script(ask_llm, topic, target_minutes, lang=lang)
     if not script.strip():
         return None
 
