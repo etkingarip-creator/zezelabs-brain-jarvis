@@ -50,6 +50,71 @@ except ImportError:
 class MediaFactoryAgent(BaseDepartmentAgent):
     department = "media_factory"
 
+    async def produce_short(self, topic: str, with_video: bool = False,
+                            premium_video: bool = False) -> Dict[str, Any]:
+        """TAM ÜRETİM (blueprint-tabanlı): AI-tools niş şablonuyla somut segment script +
+        virality + CTR + monetizasyon. with_video=False → GLM harcamaz (sadece paket).
+        with_video=True → narrated video (premium_video=True ürün finali)."""
+        import json as _json
+        from departments.media_factory import niche_blueprint as nb
+        from departments.media_factory.ctr_engine import score_title, score_thumbnail_concept
+        from departments.media_factory.virality_engine import score_script
+        from departments.media_factory.monetization_engine import monetization_stack
+
+        # 1. BLUEPRINT SENARYO (somut, jenerik değil)
+        resp = await self.ask_llm(prompt=nb.build_script_prompt(topic),
+                                  system_prompt="Sen AI-araçları uzmanı viral yazarsın. SOMUT (araç adı/adım/sayı), şablona sadık.")
+        try:
+            j = _json.loads(re.search(r'\{.*\}', resp, re.DOTALL).group(0))
+            segments = j.get("segments", [])
+            affiliate = j.get("affiliate_tool", "Synthesia")
+        except Exception:
+            return {"success": False, "error": "segment üretilemedi"}
+
+        # 2. SKORLAR (CTR + virality) — kalite kapısı
+        full_text = " ".join(s.get("en", "") for s in segments)
+        viral = score_script(full_text, target_seconds=30)
+        ct = await self.ask_llm(
+            prompt=f"'{topic}' için 4 yüksek-CTR başlık + thumbnail konsept. SADECE JSON: "
+                   f'{{"titles":["..."],"thumbnail":"..."}}',
+            system_prompt="YouTube CTR uzmanı.")
+        try:
+            cj = _json.loads(re.search(r'\{.*\}', ct, re.DOTALL).group(0))
+            best = max(((score_title(t)["score"], t) for t in cj.get("titles", []) if t), default=(0, topic))
+            thumb = score_thumbnail_concept(cj.get("thumbnail", ""))
+        except Exception:
+            best, thumb = (0, topic), {"score": 0}
+
+        # 3. MONETİZASYON (affiliate)
+        mon = monetization_stack(topic, [{"name": affiliate}], "(rehber linki)")
+
+        result = {
+            "success": True, "topic": topic, "niche": nb.NICHE,
+            "segments": segments, "affiliate_tool": affiliate,
+            "best_title": best[1], "title_ctr": best[0], "thumbnail_ctr": thumb.get("score"),
+            "virality_score": viral["score"], "viral_ready": viral["viral_ready"],
+            "monetization": {"pinned_comment": mon["pinned_comment"], "description": mon["description"]},
+            "layout": nb.LAYOUT_ZONES, "hierarchy": nb.HIERARCHY, "video_path": None,
+        }
+
+        # 4. VİDEO (opsiyonel — GLM harcar)
+        if with_video:
+            from departments.media_factory.narrated_video import build_narrated_video
+            import os as _os
+            vis = _os.path.join(self.workspace_root, "departments", self.department, "reports", "blueprint_vis.mp4")
+            _os.makedirs(_os.path.dirname(vis), exist_ok=True)
+            if premium_video:
+                _os.environ["ZOM_VIDEO_PREMIUM"] = "1"
+            if self._video_pipeline:
+                await self._video_pipeline.generate(prompt=f"{topic}, AI software interface, modern tech, cinematic",
+                                                    output_path=vis, width=1080, height=1920, duration_sec=5)
+            out = _os.path.join(self.workspace_root, "departments", self.department, "reports", "short_final.mp4")
+            vp = await build_narrated_video(segments, out, vis, aspect="9:16",
+                                            voice="en-US-GuyNeural", music=True)
+            result["video_path"] = vp
+
+        return result
+
     def __init__(self, workspace_root: str = "."):
         super().__init__(workspace_root=workspace_root)
         self.workspace_root = os.path.realpath(os.path.abspath(workspace_root))
