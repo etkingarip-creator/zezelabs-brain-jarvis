@@ -945,7 +945,28 @@ class MediaFactoryAgent(BaseDepartmentAgent):
 
 
     async def execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-        # Görev-tipi kapsama: alan içi → uzman handler; tanınmazsa generic (needs_review)
+        # OTONOM MOD SEÇİMİ: departman görevden 3 formattan birini kendi seçer ve üretir.
+        desc = (task_data.get("description", "") + " " + task_data.get("task_type", "")).lower()
+        topic = task_data.get("description", "") or "medya içeriği"
+
+        # Mod 2 — Uyku hikayesi (tarih/gizem, uzun)
+        if any(k in desc for k in ["uyku", "sleep", "uykuda", "dinlen", "hikaye anlat", "bedtime",
+                                   "history to sleep", "rahatla", "meditasyon"]):
+            mins = 120 if any(k in desc for k in ["uzun", "120", "2 saat", "60-120"]) else 5
+            return await self.produce_sleep_story(topic, target_minutes=mins,
+                                                  reuse_visuals=False)
+        # Mod 3 — Mikrodrama (Kore-tarzı dikey dizi)  [placeholder: kurulunca bağlanacak]
+        if any(k in desc for k in ["mikrodrama", "microdrama", "kısa dizi", "drama dizi", "kore dizi",
+                                   "bölümlü dizi", "vertical drama"]):
+            if hasattr(self, "produce_microdrama"):
+                return await self.produce_microdrama(topic, task_data=task_data)
+        # Mod 1 — Tech affiliate short/uzun (blueprint)
+        if any(k in desc for k in ["short", "shorts", "tiktok", "reel", "affiliate", "ai araç",
+                                   "ai tool", "tanıt", "inceleme", "review", "tech"]):
+            with_video = any(k in desc for k in ["video", "üret", "çek", "görsel"])
+            return await self.produce_short(topic, with_video=with_video)
+
+        # Tanınmazsa eski genel medya handler'ı
         routes = [(["video", "medya", "görsel", "ses", "animasyon", "içerik", "thumbnail", "prodüksiyon", "görüntü", "reel"], self._handle_primary)]
         return await self.dispatch_by_task_type(task_data, routes, 'Sen ZezeLabs Medya Fabrikası ajanısın. Video/görsel/ses medya içeriği üretirsin.')
 
