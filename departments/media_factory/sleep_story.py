@@ -66,26 +66,37 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
     if not script.strip():
         return None
 
-    # 2. TTS — sakin/yavaş ses (uzun metni parça parça seslendir, birleştir)
-    import edge_tts
-    paras = [p for p in script.split("\n\n") if p.strip()]
-    audio_parts = []
-    for i, p in enumerate(paras):
-        ap = os.path.join(workdir, f"a{i}.mp3")
-        try:
-            await edge_tts.Communicate(p, voice, rate="-8%", pitch="-2Hz").save(ap)  # sakin ama monoton değil, anlatıcı
-            if os.path.exists(ap) and os.path.getsize(ap) > 0:
-                audio_parts.append(ap)
-        except Exception:
-            pass
-    if not audio_parts:
-        return None
+    # 2. TTS — ÖNCE XTTS-v2 (doğal, yerel), yoksa edge-tts fallback.
     voice_mp3 = os.path.join(workdir, "voice.mp3")
-    alist = os.path.join(workdir, "alist.txt")
-    with open(alist, "w", encoding="utf-8") as f:
-        f.write("".join(f"file '{a}'\n" for a in audio_parts))
-    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", alist, "-c", "copy", voice_mp3],
-                   capture_output=True, timeout=120)
+    tts_src = "edge-tts"
+    used_xtts = False
+    try:
+        from departments.media_factory import tts_engine as _xtts
+        if _xtts.is_available():
+            if _xtts.synth(script, voice_mp3, lang=lang):
+                used_xtts = True
+                tts_src = "xtts-v2"
+    except Exception:
+        pass
+    if not used_xtts:
+        import edge_tts
+        paras = [p for p in script.split("\n\n") if p.strip()]
+        audio_parts = []
+        for i, p in enumerate(paras):
+            ap = os.path.join(workdir, f"a{i}.mp3")
+            try:
+                await edge_tts.Communicate(p, voice, rate="-8%").save(ap)
+                if os.path.exists(ap) and os.path.getsize(ap) > 0:
+                    audio_parts.append(ap)
+            except Exception:
+                pass
+        if not audio_parts:
+            return None
+        alist = os.path.join(workdir, "alist.txt")
+        with open(alist, "w", encoding="utf-8") as f:
+            f.write("".join(f"file '{a}'\n" for a in audio_parts))
+        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", alist, "-c", "copy", voice_mp3],
+                       capture_output=True, timeout=120)
     dur = _ffprobe_duration(voice_mp3)
     if dur <= 0:
         return None
@@ -145,7 +156,7 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if r.returncode == 0 and os.path.exists(output_path):
             return {"path": output_path, "duration_sec": round(dur, 1),
-                    "words": len(script.split()), "music": music_src}
+                    "words": len(script.split()), "music": music_src, "tts": tts_src}
         return None
     except Exception:
         return None
