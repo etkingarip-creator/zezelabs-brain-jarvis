@@ -49,7 +49,8 @@ async def _gen_long_script(ask_llm, topic: str, target_minutes: int) -> str:
 
 async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minutes: int = 5,
                             visuals_video: Optional[str] = None,
-                            voice: str = "en-US-ChristopherNeural") -> Optional[dict]:
+                            voice: str = "en-US-ChristopherNeural",
+                            sfx_prompt: Optional[str] = None) -> Optional[dict]:
     # Karizmatik anlatıcı sesi (Christopher: sıcak/derin/özgüvenli storyteller).
     # Tarih/belgesel için alternatif: en-GB-RyanNeural (Attenborough-vari İngiliz).
     """Uyku hikayesi videosu: uzun sakin narration + ambient müzik + yavaş-pan görsel."""
@@ -85,17 +86,23 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
     if dur <= 0:
         return None
 
-    # 3. Ambient müzik: ACE-Step'ten KISA (30sn) üret, ffmpeg ile döngüle (uzun süre için hızlı).
+    # 3. Ambient müzik + senaryo SFX (ACE-Step'ten KISA üret, ffmpeg döngüle).
     music = os.path.join(workdir, "ambient.wav")
+    sfx = None
     has_music = False
     music_src = "yok"
     try:
         from departments.media_factory.music_engine import is_available, generate_music
         if is_available():
             mp = os.path.join(workdir, "ace.mp3")
-            if generate_music("calm ambient sleep music, soft warm pads, slow, peaceful, no drums, dreamy",
+            if generate_music("calm ambient cinematic background music, soft warm pads, slow, dreamy, emotional",
                               mp, duration=30, poll_timeout=180):
                 music, has_music, music_src = mp, True, "ace-step"
+            # senaryoya uygun ses efekti / atmosfer (ayrı katman)
+            sp = os.path.join(workdir, "sfx.mp3")
+            if generate_music(sfx_prompt or "atmospheric ambient soundscape, soft wind, distant echoes, immersive",
+                              sp, duration=30, poll_timeout=180):
+                sfx = sp
     except Exception:
         pass
     if not has_music:
@@ -114,16 +121,22 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
     # 5. Birleştir — çok yavaş pan + narration + ambient (yatay 1920x1080 uyku formatı)
     vchain = ("[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
               "zoompan=z='min(zoom+0.0002,1.10)':d=1:s=1920x1080:fps=24[v]")
+    # Anlatıcı: loudnorm (net+yüksek). Müzik: duyulur arka plan. SFX: senaryo atmosferi.
     cmd = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", visuals_video, "-i", voice_mp3]
-    if has_music:
-        # müziği de döngüle (kısa ambient → tüm süreye yayılır)
+    voice_f = "[1:a]loudnorm=I=-14:TP=-1.5,volume=1.3,aresample=44100[vo]"
+    if has_music and sfx:
+        cmd += ["-stream_loop", "-1", "-i", music, "-stream_loop", "-1", "-i", sfx,
+                "-filter_complex", vchain + ";" + voice_f +
+                ";[2:a]volume=0.32,aresample=44100[mu];[3:a]volume=0.22,aresample=44100[fx];"
+                "[vo][mu][fx]amix=inputs=3:duration=first:normalize=0[a]"]
+    elif has_music:
         cmd += ["-stream_loop", "-1", "-i", music,
-                "-filter_complex", vchain + ";[1:a]volume=1.0,aresample=44100[vo];"
-                "[2:a]volume=0.16,aresample=44100[mu];[vo][mu]amix=inputs=2:duration=first[a]"]
+                "-filter_complex", vchain + ";" + voice_f +
+                ";[2:a]volume=0.32,aresample=44100[mu];[vo][mu]amix=inputs=2:duration=first:normalize=0[a]"]
     else:
-        cmd += ["-filter_complex", vchain + ";[1:a]aresample=44100[a]"]
+        cmd += ["-filter_complex", vchain + ";" + voice_f.replace("[vo]", "[a]")]
     cmd += ["-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", output_path]
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", output_path]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if r.returncode == 0 and os.path.exists(output_path):

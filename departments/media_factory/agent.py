@@ -52,9 +52,10 @@ class MediaFactoryAgent(BaseDepartmentAgent):
 
     async def produce_sleep_story(self, topic: str, target_minutes: int = 5,
                                   niche: str = "history", with_visuals: bool = True,
-                                  scene_count: int = 3) -> Dict[str, Any]:
-        """MOD 2 — uyku hikayesi (60-120dk tarih/gizem). Uzun anlatıcı narration + ACE-Step
-        ambient + konuya uygun GERÇEK GLM görselleri (yavaş-pan). with_visuals=False → düz zemin."""
+                                  scene_count: int = 3, reuse_visuals: bool = False,
+                                  sfx_prompt: str = None) -> Dict[str, Any]:
+        """MOD 2 — uyku hikayesi. Anlatıcı narration + ACE-Step müzik + senaryo SFX + görsel.
+        reuse_visuals=True → mevcut sl_concat.mp4'ü kullan (GLM'e dokunma, bütçe)."""
         import os as _os, asyncio as _aio, subprocess as _sp
         from departments.media_factory.sleep_story import build_sleep_story
         rep = _os.path.join(self.workspace_root, "departments", self.department, "reports")
@@ -62,7 +63,9 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         out = _os.path.join(rep, f"sleep_{abs(hash(topic)) % 10000}.mp4")
 
         visuals = None
-        if with_visuals and self._video_pipeline:
+        if reuse_visuals and _os.path.exists(_os.path.join(rep, "sl_concat.mp4")):
+            visuals = _os.path.join(rep, "sl_concat.mp4")  # mevcut görsel, GLM yok
+        elif with_visuals and self._video_pipeline:
             # Konuya uygun sahne tarifleri üret (atmosferik, sinematik, sakin)
             sc_resp = await self.ask_llm(
                 prompt=f"'{topic}' uyku belgeseli için {scene_count} atmosferik sinematik sahne tarifi (İngilizce, "
@@ -90,7 +93,9 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                 _sp.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
                          "-c:v", "libx264", "-pix_fmt", "yuv420p", visuals], capture_output=True, timeout=120)
 
-        res = await build_sleep_story(self.ask_llm, topic, out, target_minutes=target_minutes, visuals_video=visuals)
+        res = await build_sleep_story(self.ask_llm, topic, out, target_minutes=target_minutes,
+                                      visuals_video=visuals,
+                                      sfx_prompt=sfx_prompt or f"atmospheric ambient soundscape for {topic}, immersive, soft")
         if not res:
             return {"success": False, "error": "sleep story üretilemedi"}
         return {"success": True, "mode": "sleep_story", "topic": topic, "niche": niche,
