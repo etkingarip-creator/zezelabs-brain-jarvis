@@ -107,7 +107,8 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                 _os.environ["ZOM_VIDEO_PREMIUM"] = "1"
             if self._video_pipeline:
                 await self._video_pipeline.generate(prompt=f"{topic}, AI software interface, modern tech, cinematic",
-                                                    output_path=vis, width=1080, height=1920, duration_sec=5)
+                                                    output_path=vis, width=1080, height=1920, duration_sec=5,
+                                                    model="glm-5.2")  # ekonomi-GLM (gerçek hareketli)
             out = _os.path.join(self.workspace_root, "departments", self.department, "reports", "short_final.mp4")
             vp = await build_narrated_video(segments, out, vis, aspect="9:16",
                                             voice="en-US-GuyNeural", music=True)
