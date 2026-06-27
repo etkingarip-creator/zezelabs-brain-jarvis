@@ -1,0 +1,134 @@
+"""
+Sleep Story — uyku/dinlenme uzun-form içeriği (60-120dk, tarih/gizem).
+
+Gelir gerçeği: 321 Relaxing $17k/ay, "Boring History" 6sa uyku-belgeselleri. RPM düşük
+ama tek izlemede 8sa watch-time → algoritma ödüllendirir. ÜRETİM SIRRI: ses kalitesi
+öncelik, görsel minimal (statik/yavaş-pan). Bizim araçlara tam uyar.
+
+Pipeline: uzun sakin narration (edge-tts, yavaş) + ambient müzik (ACE-Step/sentez, çok
+altta) + yavaş-pan görsel döngü → uzun MP4. Altyazı YOK (uyku içeriği).
+"""
+from __future__ import annotations
+import os
+import asyncio
+import subprocess
+import tempfile
+from typing import Optional, List
+
+SLEEP_NICHES = ["tarih (history to sleep to)", "çözülmemiş gizemler", "uzay/kozmos",
+                "antik medeniyetler", "okyanus derinlikleri", "kayıp şehirler"]
+
+
+async def _gen_long_script(ask_llm, topic: str, target_minutes: int) -> str:
+    """Sakin, monoton-dostu uzun narration üret. ~150 kelime/dk → parça parça (uzun için döngü)."""
+    target_words = target_minutes * 145
+    chunks: List[str] = []
+    words_so_far = 0
+    prev = ""
+    while words_so_far < target_words:
+        remaining = target_words - words_so_far
+        ask = min(700, remaining)
+        prompt = (
+            f"Uyku/dinlenme videosu için SAKİN, monoton, yavaş tempolu anlatı yaz (İngilizce). "
+            f"Konu: {topic} (niş: uykuda dinlenecek tarih/gizem). ~{ask} kelime. "
+            f"Heyecan/şok YOK — yumuşak, hipnotik, uyutucu akış. Bölüm başlığı/işaret yok, düz anlatı.\n"
+            + (f"ÖNCEKİ KISMIN SONU (devam et, tekrarlama):\n...{prev[-300:]}" if prev else "Baştan başla.")
+        )
+        part = await ask_llm(prompt=prompt,
+                             system_prompt="Sen uyku-hikayesi anlatıcısısın. Yumuşak, sakin, hipnotik, monoton-dostu yazarsın.")
+        part = (part or "").strip()
+        if not part:
+            break
+        chunks.append(part)
+        prev = part
+        words_so_far += len(part.split())
+        if len(chunks) > 60:  # güvenlik
+            break
+    return "\n\n".join(chunks)
+
+
+async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minutes: int = 5,
+                            visuals_video: Optional[str] = None,
+                            voice: str = "en-US-GuyNeural") -> Optional[dict]:
+    """Uyku hikayesi videosu: uzun sakin narration + ambient müzik + yavaş-pan görsel."""
+    from departments.media_factory.narrated_video import _ffprobe_duration, _make_music_bed
+    workdir = tempfile.mkdtemp(prefix="sleep_")
+
+    # 1. Uzun narration
+    script = await _gen_long_script(ask_llm, topic, target_minutes)
+    if not script.strip():
+        return None
+
+    # 2. TTS — sakin/yavaş ses (uzun metni parça parça seslendir, birleştir)
+    import edge_tts
+    paras = [p for p in script.split("\n\n") if p.strip()]
+    audio_parts = []
+    for i, p in enumerate(paras):
+        ap = os.path.join(workdir, f"a{i}.mp3")
+        try:
+            await edge_tts.Communicate(p, voice, rate="-12%").save(ap)  # yavaş tempo
+            if os.path.exists(ap) and os.path.getsize(ap) > 0:
+                audio_parts.append(ap)
+        except Exception:
+            pass
+    if not audio_parts:
+        return None
+    voice_mp3 = os.path.join(workdir, "voice.mp3")
+    alist = os.path.join(workdir, "alist.txt")
+    with open(alist, "w", encoding="utf-8") as f:
+        f.write("".join(f"file '{a}'\n" for a in audio_parts))
+    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", alist, "-c", "copy", voice_mp3],
+                   capture_output=True, timeout=120)
+    dur = _ffprobe_duration(voice_mp3)
+    if dur <= 0:
+        return None
+
+    # 3. Ambient müzik (ACE-Step gerçek, yoksa sentez) — çok altta (uyku)
+    music = os.path.join(workdir, "ambient.wav")
+    has_music = False
+    try:
+        from departments.media_factory.music_engine import is_available, generate_music
+        if is_available():
+            mp = os.path.join(workdir, "ace.mp3")
+            if generate_music("calm ambient sleep music, soft pads, slow, peaceful, no drums",
+                              mp, duration=int(dur) + 5):
+                music, has_music = mp, True
+    except Exception:
+        pass
+    if not has_music:
+        has_music = _make_music_bed(music, dur)
+
+    # 4. Görsel: sakin yavaş-pan (yoksa düz koyu zemin), uzun süreye döngü
+    if not (visuals_video and os.path.exists(visuals_video)):
+        # statik sakin görsel: koyu gradyan (uyku-dostu) — ffmpeg lavfi
+        visuals_video = os.path.join(workdir, "bg.mp4")
+        subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+                        "gradients=s=1920x1080:c0=0x0a0a2a:c1=0x000000:d=10", "-t", "10",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", visuals_video],
+                       capture_output=True, timeout=60)
+
+    # 5. Birleştir — çok yavaş pan + narration + ambient (yatay 1920x1080 uyku formatı)
+    vchain = ("[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
+              "zoompan=z='min(zoom+0.0002,1.10)':d=1:s=1920x1080:fps=24[v]")
+    cmd = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", visuals_video, "-i", voice_mp3]
+    if has_music:
+        cmd += ["-i", music,
+                "-filter_complex", vchain + ";[1:a]volume=1.0,aresample=44100[vo];"
+                "[2:a]volume=0.10,aresample=44100[mu];[vo][mu]amix=inputs=2:duration=first[a]"]
+    else:
+        cmd += ["-filter_complex", vchain + ";[1:a]aresample=44100[a]"]
+    cmd += ["-map", "[v]", "-map", "[a]", "-t", f"{dur:.2f}",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", output_path]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if r.returncode == 0 and os.path.exists(output_path):
+            return {"path": output_path, "duration_sec": round(dur, 1),
+                    "words": len(script.split()), "music": "ace-step" if (has_music and "ace" in music) else "sentez"}
+        return None
+    except Exception:
+        return None
+    finally:
+        try:
+            import shutil; shutil.rmtree(workdir, ignore_errors=True)
+        except Exception:
+            pass

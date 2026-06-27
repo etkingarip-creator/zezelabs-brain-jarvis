@@ -50,6 +50,19 @@ except ImportError:
 class MediaFactoryAgent(BaseDepartmentAgent):
     department = "media_factory"
 
+    async def produce_sleep_story(self, topic: str, target_minutes: int = 5,
+                                  niche: str = "history") -> Dict[str, Any]:
+        """MOD 2 — uyku hikayesi (60-120dk tarih/gizem). Uzun sakin narration + ambient + yavaş-pan."""
+        import os as _os
+        from departments.media_factory.sleep_story import build_sleep_story
+        out = _os.path.join(self.workspace_root, "departments", self.department, "reports",
+                            f"sleep_{abs(hash(topic)) % 10000}.mp4")
+        _os.makedirs(_os.path.dirname(out), exist_ok=True)
+        res = await build_sleep_story(self.ask_llm, topic, out, target_minutes=target_minutes)
+        if not res:
+            return {"success": False, "error": "sleep story üretilemedi"}
+        return {"success": True, "mode": "sleep_story", "topic": topic, "niche": niche, **res}
+
     async def produce_short(self, topic: str, with_video: bool = False,
                             premium_video: bool = False) -> Dict[str, Any]:
         """TAM ÜRETİM (blueprint-tabanlı): AI-tools niş şablonuyla somut segment script +
