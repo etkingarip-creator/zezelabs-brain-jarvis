@@ -1,60 +1,97 @@
 """
 Music Engine — ACE-Step (yerel, ücretsiz Suno alternatifi) ile GERÇEK müzik + şarkı/vokal.
 
-ACE-Step 1.5 Gradio API'sine (varsayılan http://localhost:8001) bağlanır. %100 yerel,
-6GB VRAM'e sığar (PT backend ~1.6GB). Çalışmıyorsa None döner → çağıran sentez yatağa düşer.
+ACE-Step FastAPI'sine (varsayılan http://localhost:8001) bağlanır. %100 yerel.
+Akış: POST /release_task (prompt+lyrics+duration) → task_id → POST /query_result (poll)
+→ first_audio_path → kopyala. Çalışmıyorsa None → çağıran sentez yatağa düşer.
 
-Kurulum (kullanıcı):
-  1. ACE-Step 1.5 kur (acestep) + bu repo: github.com/fspecii/ace-step-ui
-  2. Gradio sunucu: acestep --port 8001 --enable-api
-  3. ACESTEP_API_URL=http://localhost:8001 (varsayılan)
+Kurulum: ACE-Step 1.5 portable (C:\\ACE-Step-1.5), sunucu:
+  python_embeded\\python acestep\\api_server.py --host 127.0.0.1 --port 8001 --download-source auto
 """
 from __future__ import annotations
 import os
+import time
+import json
+import shutil
 from typing import Optional
 
 
-def _api_url() -> str:
+def _base() -> str:
     return os.getenv("ACESTEP_API_URL", "http://localhost:8001")
 
 
 def is_available(timeout: float = 3.0) -> bool:
-    """ACE-Step Gradio sunucusu ayakta mı?"""
+    """ACE-Step sunucusu ayakta + sağlıklı mı (/health)."""
     try:
         import requests
-        r = requests.get(_api_url(), timeout=timeout)
-        return r.status_code < 500
+        r = requests.get(_base() + "/health", timeout=timeout)
+        return r.status_code == 200
     except Exception:
         return False
 
 
 def generate_music(prompt: str, output_path: str, duration: int = 30,
-                   lyrics: Optional[str] = None, api_name: Optional[str] = None) -> Optional[str]:
-    """ACE-Step ile gerçek müzik/şarkı üret. prompt=tarz/mood (örn 'upbeat cheerful kids song,
-    ukulele, claps'), lyrics=şarkı sözü (vokal için). Döner: dosya yolu veya None.
-    gradio API imzası sürümle değişebilir → ACESTEP_API_NAME ile override edilebilir."""
+                   lyrics: Optional[str] = None, poll_timeout: int = 300) -> Optional[str]:
+    """ACE-Step ile gerçek müzik/şarkı üret.
+    prompt=tarz/mood (örn 'upbeat cheerful kids song, ukulele'), lyrics=şarkı sözü (boş=enstrümantal).
+    Döner: dosya yolu veya None."""
     if not is_available():
         return None
     try:
-        from gradio_client import Client
+        import requests
     except Exception:
         return None
     try:
-        client = Client(_api_url())
-        name = api_name or os.getenv("ACESTEP_API_NAME", "/generate")
-        # ACE-Step tipik girdiler: (prompt/tags, lyrics, duration). İmza değişirse env ile ayarla.
-        try:
-            result = client.predict(prompt, lyrics or "", float(duration), api_name=name)
-        except Exception:
-            # alternatif imza (yalnız prompt + süre)
-            result = client.predict(prompt, float(duration), api_name=name)
-        # result genelde dosya yolu (veya {"name": path}) döner
-        src = result.get("name") if isinstance(result, dict) else (
-            result[0] if isinstance(result, (list, tuple)) else result)
-        if src and os.path.exists(str(src)):
-            import shutil
-            shutil.copy(str(src), output_path)
-            return output_path
+        body = {"prompt": prompt, "lyrics": lyrics or "", "audio_duration": float(duration)}
+        r = requests.post(_base() + "/release_task", json=body, timeout=30)
+        if r.status_code != 200:
+            return None
+        env = r.json().get("data", {}) if isinstance(r.json(), dict) else {}
+        task_id = env.get("task_id")
+        if not task_id:
+            return None
+
+        deadline = time.time() + poll_timeout
+        while time.time() < deadline:
+            time.sleep(8)
+            q = requests.post(_base() + "/query_result",
+                              json={"task_id_list": [task_id]}, timeout=30)
+            if q.status_code != 200:
+                continue
+            try:
+                items = q.json().get("data", [])
+            except Exception:
+                continue
+            for it in (items if isinstance(items, list) else [items]):
+                if not isinstance(it, dict):
+                    continue
+                # 'result' iç içe JSON string: [{"file": path, "wave": ..., "stage": ...}]
+                res = it.get("result")
+                inner = []
+                if isinstance(res, str):
+                    try:
+                        inner = json.loads(res)
+                    except Exception:
+                        inner = []
+                elif isinstance(res, list):
+                    inner = res
+                for seg in (inner if isinstance(inner, list) else [inner]):
+                    if isinstance(seg, dict):
+                        path = seg.get("file") or seg.get("wave")
+                        if not path:
+                            continue
+                        path = str(path)
+                        # ACE-Step 'file' tamamlanınca /v1/audio?path=... URL'i döner
+                        if path.startswith("/v1/audio") or path.startswith("http"):
+                            url = path if path.startswith("http") else _base() + path
+                            dl = requests.get(url, timeout=120)
+                            if dl.status_code == 200 and dl.content:
+                                with open(output_path, "wb") as f:
+                                    f.write(dl.content)
+                                return output_path
+                        elif os.path.exists(path):
+                            shutil.copy(path, output_path)
+                            return output_path
         return None
     except Exception:
         return None
