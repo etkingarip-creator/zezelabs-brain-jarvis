@@ -27,9 +27,24 @@ def is_available(timeout: float = 3.0) -> bool:
         return False
 
 
-def _chunk(text: str, max_chars: int = 350) -> List[str]:
-    """Uzun metni cümle sınırında parçalara böl (XTTS kalite + bellek için)."""
-    sents = re.split(r"(?<=[.!?])\s+", (text or "").strip())
+def _chunk(text: str, max_chars: int = 180) -> List[str]:
+    """Cümle sınırında parçala. KÜÇÜK tut (XTTS token limiti aşılırsa CUDA index assert →
+    context bozulur). Uzun cümleleri virgül/boşlukla da böl."""
+    text = (text or "").strip()
+    raw = re.split(r"(?<=[.!?])\s+", text)
+    sents = []
+    for s in raw:
+        if len(s) <= max_chars:
+            sents.append(s)
+        else:  # uzun cümleyi virgül/kelime ile parçala
+            cur = ""
+            for part in re.split(r"(?<=[,;:])\s+", s):
+                if cur and len(cur) + len(part) + 1 > max_chars:
+                    sents.append(cur); cur = part
+                else:
+                    cur = (cur + " " + part).strip()
+            if cur:
+                sents.append(cur)
     chunks, cur = [], ""
     for s in sents:
         if cur and len(cur) + len(s) + 1 > max_chars:
@@ -38,7 +53,7 @@ def _chunk(text: str, max_chars: int = 350) -> List[str]:
             cur = (cur + " " + s).strip()
     if cur:
         chunks.append(cur)
-    return chunks or [text]
+    return [c for c in chunks if c.strip()] or [text[:max_chars]]
 
 
 def synth(text: str, out_path: str, lang: str = "tr", speaker: str = "",
