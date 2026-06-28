@@ -94,12 +94,29 @@ async def build_episode(ask_llm, genre: str, episode_num: int, output_path: str,
                 t += d
     if not seq:
         return None
-    voice_mp3 = os.path.join(work, "dialogue.mp3")
+    # Replikler arası 0.35sn sessizlik (kesilmeyi önler, doğal tempo) + TEK temiz birleştirme.
+    # Her parçayı normalize wav'a çevir, aralara sessizlik ekle, sonra birleştir (re-encode).
+    sil = os.path.join(work, "sil.wav")
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "0.35", sil],
+                   capture_output=True, timeout=30)
+    norm_seq, new_timings, t2 = [], [], 0.0
+    for k, p in enumerate(seq):
+        npth = os.path.join(work, f"n{k}.wav")
+        subprocess.run(["ffmpeg", "-y", "-i", p, "-ar", "44100", "-ac", "1", npth], capture_output=True, timeout=60)
+        if not os.path.exists(npth):
+            continue
+        d = _ffprobe_duration(npth)
+        ch, line = timings[k][2], timings[k][3]
+        new_timings.append((t2, t2 + d, ch, line))
+        t2 += d + 0.35
+        norm_seq.append(npth); norm_seq.append(sil)
+    timings = new_timings
+    voice_mp3 = os.path.join(work, "dialogue.wav")
     al = os.path.join(work, "al.txt")
     with open(al, "w", encoding="utf-8") as f:
-        f.write("".join(f"file '{p}'\n" for p in seq))
-    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", al, "-c:a", "libmp3lame", voice_mp3],
-                   capture_output=True, timeout=120)
+        f.write("".join(f"file '{p}'\n" for p in norm_seq))
+    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", al,
+                    "-ar", "44100", "-ac", "1", voice_mp3], capture_output=True, timeout=120)
     total = _ffprobe_duration(voice_mp3)
 
     # 3. Altyazı (ASS) — konuşmacı etiketli, dikey
@@ -115,14 +132,25 @@ async def build_episode(ask_llm, genre: str, episode_num: int, output_path: str,
     with open(ass, "w", encoding="utf-8") as f:
         f.write(header + "\n".join(ev) + "\n")
 
-    # 4. Dramatik müzik (ACE-Step)
+    # 4. Dramatik müzik + SFX (ACE-Step). Müzik döngülenir, SFX atmosfer katar.
     music, has_music = os.path.join(work, "m.wav"), False
+    sfx = None
     try:
         from departments.media_factory.music_engine import is_available as _ma, generate_music as _gm
-        if _ma() and _gm("tense dramatic emotional cinematic background music, suspenseful", music, duration=30, poll_timeout=150):
-            has_music = True
+        if _ma():
+            if _gm("tense dramatic emotional cinematic background music, suspenseful, strings", music, duration=25, poll_timeout=150):
+                has_music = True
+            sp = os.path.join(work, "fx.wav")
+            if _gm("subtle dramatic sound effects, tension riser, ambient room tone, heartbeat", sp, duration=25, poll_timeout=150):
+                sfx = sp
     except Exception:
         pass
+    if not has_music:
+        try:
+            from departments.media_factory.narrated_video import _make_music_bed
+            has_music = _make_music_bed(music, total)
+        except Exception:
+            pass
 
     # 5. Görsel (yoksa koyu sinematik zemin)
     if not (visuals_video and os.path.exists(visuals_video)):
@@ -135,14 +163,21 @@ async def build_episode(ask_llm, genre: str, episode_num: int, output_path: str,
     vchain = ("[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
               f"ass='{ass_esc}'[v]")
     cmd = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", visuals_video, "-i", voice_mp3]
+    amix = ["[vo]"]; idx = 2; extra = ""
+    vexpr = "[1:a]loudnorm=I=-14,volume=1.25[vo]"
     if has_music:
-        cmd += ["-stream_loop", "-1", "-i", music,
-                "-filter_complex", vchain + ";[1:a]loudnorm=I=-14,volume=1.2[vo];[2:a]volume=0.22[mu];"
-                "[vo][mu]amix=inputs=2:duration=first:normalize=0[a]"]
+        cmd += ["-stream_loop", "-1", "-i", music]
+        extra += f";[{idx}:a]volume=0.28,aresample=44100[a{idx}]"; amix.append(f"[a{idx}]"); idx += 1
+    if sfx and os.path.exists(sfx):
+        cmd += ["-stream_loop", "-1", "-i", sfx]
+        extra += f";[{idx}:a]volume=0.20,aresample=44100[a{idx}]"; amix.append(f"[a{idx}]"); idx += 1
+    if len(amix) > 1:
+        af = vexpr + extra + f";{''.join(amix)}amix=inputs={len(amix)}:duration=first:normalize=0[a]"
     else:
-        cmd += ["-filter_complex", vchain + ";[1:a]loudnorm=I=-14,volume=1.2[a]"]
-    cmd += ["-map", "[v]", "-map", "[a]", "-t", f"{total:.2f}", "-c:v", "libx264",
-            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", output_path]
+        af = vexpr.replace("[vo]", "[a]")
+    cmd += ["-filter_complex", vchain + ";" + af, "-map", "[v]", "-map", "[a]",
+            "-t", f"{total:.2f}", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k", output_path]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if r.returncode == 0 and os.path.exists(output_path):
