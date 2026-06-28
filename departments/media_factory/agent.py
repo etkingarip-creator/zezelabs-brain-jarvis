@@ -50,6 +50,41 @@ except ImportError:
 class MediaFactoryAgent(BaseDepartmentAgent):
     department = "media_factory"
 
+    async def produce_microdrama(self, genre: str = "intikam ve aşk", episode_num: int = 1,
+                                 prev_cliffhanger: str = "", lang: str = "tr",
+                                 with_video: bool = True, task_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """MOD 3 — Kore-tarzı dikey mikrodrama bölümü (60-90sn). Çok-karakterli XTTS sesleri +
+        sahne + dramatik müzik + cliffhanger. Seri devamlılığı için prev_cliffhanger."""
+        import os as _os, asyncio as _aio, subprocess as _sp
+        from departments.media_factory.microdrama import build_episode
+        rep = _os.path.join(self.workspace_root, "departments", self.department, "reports")
+        _os.makedirs(rep, exist_ok=True)
+        out = _os.path.join(rep, f"drama_ep{episode_num}.mp4")
+
+        visuals = None
+        if with_video and self._video_pipeline:
+            scenes = [f"{genre} korean drama scene, cinematic vertical, emotional, dramatic lighting",
+                      f"{genre} korean drama confrontation, tense, vertical cinematic"]
+            paths = [_os.path.join(rep, f"dr_sc{i}.mp4") for i in range(len(scenes))]
+            async def _g(pr, pa):
+                return await self._video_pipeline.generate(prompt=pr, output_path=pa,
+                                                           width=1080, height=1920, duration_sec=5, model="glm-5.2")
+            await _aio.gather(*[_g(scenes[i], paths[i]) for i in range(len(scenes))], return_exceptions=True)
+            ok = [p for p in paths if _os.path.exists(p)]
+            if ok:
+                visuals = _os.path.join(rep, "dr_concat.mp4")
+                lst = _os.path.join(rep, "dr_list.txt")
+                with open(lst, "w") as f:
+                    f.write("".join(f"file '{p}'\n" for p in ok))
+                _sp.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
+                         "-c:v", "libx264", "-pix_fmt", "yuv420p", visuals], capture_output=True, timeout=120)
+
+        res = await build_episode(self.ask_llm, genre, episode_num, out,
+                                  prev_cliffhanger=prev_cliffhanger, visuals_video=visuals, lang=lang)
+        if not res:
+            return {"success": False, "error": "mikrodrama bölümü üretilemedi (XTTS gerekli)"}
+        return {"success": True, "mode": "microdrama", "genre": genre, **res}
+
     async def produce_sleep_story(self, topic: str, target_minutes: int = 5,
                                   niche: str = "history", with_visuals: bool = True,
                                   scene_count: int = 3, reuse_visuals: bool = False,
