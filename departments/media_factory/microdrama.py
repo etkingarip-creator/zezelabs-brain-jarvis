@@ -17,22 +17,35 @@ import subprocess
 import tempfile
 from typing import Optional, List, Dict
 
-# XTTS sesi havuzu (premium, yavaş — 6GB VRAM'de bölüm başına dakikalar)
-VOICE_POOL = ["Damien Black", "Brenda Stern", "Viktor Eka", "Sofia Hellen",
-              "Craig Gutsy", "Alison Dietlinde", "Badr Odhiambo", "Tammie Ema"]
+# XTTS sesleri cinsiyete göre (premium)
+XTTS_MALE = ["Damien Black", "Viktor Eka", "Craig Gutsy", "Badr Odhiambo"]
+XTTS_FEMALE = ["Brenda Stern", "Sofia Hellen", "Alison Dietlinde", "Tammie Ema"]
 
-# edge-tts çok-ses (HIZLI — mikrodrama volume için varsayılan). TR sınırlı (Ahmet/Emel),
-# pitch ile karakterler ayrıştırılır. EN'de daha çok ses var.
-EDGE_TR = [("tr-TR-AhmetNeural", "+0Hz"), ("tr-TR-EmelNeural", "+0Hz"),
-           ("tr-TR-AhmetNeural", "-25Hz"), ("tr-TR-EmelNeural", "+20Hz")]
-EDGE_EN = [("en-US-GuyNeural", "+0Hz"), ("en-US-JennyNeural", "+0Hz"),
-           ("en-US-EricNeural", "+0Hz"), ("en-US-AriaNeural", "+0Hz")]
+# edge-tts cinsiyete göre (TR sınırlı: Ahmet♂/Emel♀ → aynı cinsiyette pitch ile çeşitlilik)
+EDGE_MALE_TR = [("tr-TR-AhmetNeural", "+0Hz"), ("tr-TR-AhmetNeural", "-30Hz")]
+EDGE_FEMALE_TR = [("tr-TR-EmelNeural", "+0Hz"), ("tr-TR-EmelNeural", "+25Hz")]
+EDGE_MALE_EN = [("en-US-GuyNeural", "+0Hz"), ("en-US-EricNeural", "+0Hz")]
+EDGE_FEMALE_EN = [("en-US-JennyNeural", "+0Hz"), ("en-US-AriaNeural", "+0Hz")]
 
 
-def assign_voices(characters: List[str], engine: str = "edge", lang: str = "tr") -> Dict[str, tuple]:
-    pool = (EDGE_TR if lang == "tr" else EDGE_EN) if engine == "edge" else \
-           [(v, "+0Hz") for v in VOICE_POOL]
-    return {c: pool[i % len(pool)] for i, c in enumerate(characters)}
+def assign_voices(characters: List[Dict], engine: str = "edge", lang: str = "tr") -> Dict[str, tuple]:
+    """CİNSİYETE göre ses ata. characters: [{name, gender}]. Aynı cinsiyette sıra/pitch ile çeşitlilik."""
+    if engine == "xtts":
+        male = [(v, "+0Hz") for v in XTTS_MALE]; female = [(v, "+0Hz") for v in XTTS_FEMALE]
+    else:
+        male = EDGE_MALE_TR if lang == "tr" else EDGE_MALE_EN
+        female = EDGE_FEMALE_TR if lang == "tr" else EDGE_FEMALE_EN
+    mi = fi = 0
+    out = {}
+    for c in characters:
+        name = c.get("name") if isinstance(c, dict) else c
+        gender = (c.get("gender", "") if isinstance(c, dict) else "").lower()
+        is_female = gender in ("female", "kadın", "kız", "f", "k")
+        if is_female:
+            out[name] = female[fi % len(female)]; fi += 1
+        else:
+            out[name] = male[mi % len(male)]; mi += 1
+    return out
 
 
 async def _synth_line(engine: str, text: str, out_wav: str, voice_spec, lang: str) -> bool:
@@ -64,22 +77,29 @@ async def build_episode(ask_llm, genre: str, episode_num: int, output_path: str,
         f"Kore-tarzı dikey mikrodrama, BÖLÜM {episode_num}, tür: {genre}. {dil} yaz. "
         f"60-90 saniye (~12-16 replik). Yüksek tempo, melodram, duygusal. "
         f"{'ÖNCEKİ BÖLÜM CLIFFHANGER: ' + prev_cliffhanger if prev_cliffhanger else 'Açılış bölümü.'} "
-        f"Bölüm SONU güçlü cliffhanger ile bitmeli. SADECE JSON: "
-        f'{{"characters":["isim1","isim2"],"lines":[{{"character":"isim","line":"replik"}}],"cliffhanger":"sonraki bölüm gerilimi"}}'
+        f"Bölüm SONU güçlü cliffhanger ile bitmeli. Her karakterin CİNSİYETİ belirtilmeli. SADECE JSON: "
+        f'{{"characters":[{{"name":"isim","gender":"male|female"}}],"lines":[{{"character":"isim","line":"replik"}}],"cliffhanger":"sonraki bölüm gerilimi"}}'
     )
     resp = await ask_llm(prompt=prompt, system_prompt="Sen viral mikrodrama senaristisin. Tempolu, duygusal, cliffhanger ustası.")
     try:
         data = json.loads(re.search(r'\{.*\}', resp, re.DOTALL).group(0))
         lines = data.get("lines", [])
-        chars = data.get("characters") or characters or list({l.get("character") for l in lines})
+        char_objs = data.get("characters") or []
+        # geriye uyum: eski format düz isim listesi olabilir
+        if char_objs and isinstance(char_objs[0], str):
+            char_objs = [{"name": c, "gender": "male"} for c in char_objs]
+        if not char_objs:
+            char_objs = [{"name": n, "gender": "male"} for n in {l.get("character") for l in lines}]
+        chars = [c.get("name") for c in char_objs]
         cliff = data.get("cliffhanger", "")
     except Exception:
         return None
     if not lines:
         return None
 
-    voices = assign_voices(chars, engine=engine, lang=lang)
-    default_v = (EDGE_TR if lang == "tr" else EDGE_EN)[0] if engine == "edge" else (VOICE_POOL[0], "+0Hz")
+    voices = assign_voices(char_objs, engine=engine, lang=lang)
+    default_v = ((EDGE_MALE_TR if lang == "tr" else EDGE_MALE_EN)[0] if engine == "edge"
+                 else (XTTS_MALE[0], "+0Hz"))
 
     # 2. Her replik karakterin sesiyle (sıralı), süre takibi
     seq, timings, t = [], [], 0.0
