@@ -213,6 +213,13 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         self.critic = CriticAgent()
         # Unicorn v2 bileşenleri
         self._video_pipeline = VideoPipeline() if _VIDEO_PIPELINE_AVAILABLE else None
+        # Prodüksiyon ekibi (rol-tabanlı ofis çalışanları): Senarist/Ses Müh./Ses Tas./
+        # Görüntü Yön./Kurgucu(Editor)/Yönetmen. Tek montaj merkezi = self.crew.editor
+        try:
+            from departments.media_factory.production_crew import Director
+            self.crew = Director(self)
+        except Exception:
+            self.crew = None
         self._analytics = MediaAnalyticsTracker(workspace_root=workspace_root) if _ANALYTICS_AVAILABLE else None
 
     def _detect_target_model(self, goal: str) -> str:
