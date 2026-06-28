@@ -78,13 +78,20 @@ Style: Hook,Arial,64,&H0000F2FF,&H00000000,&H78000000,1,1,5,3,2,120,120,440
         f.write(header + "\n" + "\n".join(events) + "\n")
 
 
-async def synth_voice_en(text: str, mp3_path: str, voice: str = "en-US-GuyNeural") -> bool:
-    """İngilizce neural seslendirme (edge-tts, ücretsiz). voice ile ses değişir
-    (çocuk içeriği: en-US-AnaNeural neşeli/çocuk sesi)."""
+async def synth_voice_en(text: str, mp3_path: str, voice: str = "en-US-GuyNeural",
+                         lang: str = "en", speaker_wav: str = "") -> bool:
+    """Seslendirme: ÖNCE XTTS-v2 (doğal, yerel, ses-klonlama), yoksa edge-tts fallback.
+    lang=en|tr. speaker_wav verilirse kullanıcının sesini klonlar."""
+    try:
+        from departments.media_factory import tts_engine as _x
+        if _x.is_available():
+            if _x.synth(text, mp3_path, lang=lang, speaker_wav=speaker_wav):
+                return True
+    except Exception:
+        pass
     try:
         import edge_tts
-        comm = edge_tts.Communicate(text, voice)
-        await comm.save(mp3_path)
+        await edge_tts.Communicate(text, voice).save(mp3_path)
         return os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 0
     except Exception:
         return False
