@@ -51,8 +51,18 @@ class SoundDesigner:
             return None
 
 
+class StoryboardArtist:
+    """Storyboard Sanatçısı — senaryoyu sahne-sahne çekim planına çevirir (görsel tutarlılığın
+    omurgası). Çıktı GLM-hazır görsel prompt'lar → Görüntü Yönetmeni rastgele değil PLANLI çeker."""
+    async def draft(self, ask_llm, premise: str, num_shots: int = 6,
+                    characters=None, vertical: bool = True, style: str = "cinematic"):
+        from departments.media_factory.storyboard import generate_storyboard
+        return await generate_storyboard(ask_llm, premise, num_shots=num_shots,
+                                         characters=characters, vertical=vertical, style=style)
+
+
 class Cinematographer:
-    """Görüntü Yönetmeni — sahne görsellerini üretir (GLM ekonomi) ve birleştirir."""
+    """Görüntü Yönetmeni — storyboard prompt'larından sahne görsellerini üretir (GLM) ve birleştirir."""
     def __init__(self, video_pipeline):
         self.vp = video_pipeline
 
@@ -123,12 +133,15 @@ class Director:
     """Yönetmen — ekibi (Senarist/Ses Müh./Ses Tas./Görüntü Yön./Kurgucu) koordine eder."""
     def __init__(self, agent):
         self.agent = agent
+        self.storyboard = StoryboardArtist()
         self.voice = VoiceEngineer()
         self.sound = SoundDesigner()
         self.dop = Cinematographer(getattr(agent, "_video_pipeline", None))
         self.editor = Editor()
 
     def crew(self) -> Dict[str, str]:
-        return {"Senarist": "ask_llm + blueprint", "Ses Mühendisi": "XTTS/edge çok-ses",
-                "Ses Tasarımcısı": "ACE-Step müzik+SFX", "Görüntü Yönetmeni": "GLM sahne",
-                "Kurgucu (Editor)": "ffmpeg ses+görüntü montajı", "Yönetmen": "koordinasyon"}
+        return {"Senarist": "ask_llm + blueprint",
+                "Storyboard Sanatçısı": "sahne-sahne çekim planı (tutarlılık omurgası)",
+                "Ses Mühendisi": "XTTS/edge çok-ses", "Ses Tasarımcısı": "ACE-Step müzik+SFX",
+                "Görüntü Yönetmeni": "storyboard→GLM sahne", "Kurgucu (Editor)": "ffmpeg ses+görüntü montajı",
+                "Yönetmen": "koordinasyon"}
