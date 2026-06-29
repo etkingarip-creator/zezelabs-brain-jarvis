@@ -112,51 +112,94 @@ def create_audio(source_text: str, focus_prompt: str = "", lang: str = "en",
             # 2. Kaynak: "Kopyalanan metin" → textarea → "Ekle"
             _click_first(page, ["text=Kopyalanan metin", "text=Copied text", "text=Pasted text", "text=Metni yapıştır"])
             page.wait_for_timeout(2500)
-            try:
-                page.locator("textarea").first.fill(source_text[:480000])
-            except Exception:
-                page.keyboard.type(source_text[:5000])
-            page.wait_for_timeout(500)
-            _click_first(page, ["button:has-text('Ekle')", "button:has-text('Insert')", "[aria-label*='Ekle']", "[aria-label*='Insert']"])
-            page.wait_for_timeout(12000)  # kaynak işlensin
-
-            # 3. Sesli Genel Bakış (Studio paneli) → üret
-            _click_first(page, ["text=Sesli Genel Bakış", "text=Sesli genel bakış", "text=Audio Overview",
-                                "[aria-label*='Sesli']", "[aria-label*='Audio']"], timeout=6000)
-            page.wait_for_timeout(2000)
-            if focus_prompt and _click_first(page, ["text=Özelleştir", "text=Customize", "[aria-label*='zelleştir']"], timeout=2500):
-                page.wait_for_timeout(1000)
+            # dialogdaki görünür textarea (ilk textarea gizli sohbet kutusu olabilir)
+            ta = None
+            for cand in [page.get_by_placeholder("Metni buraya yapıştırın"),
+                         page.locator("textarea:visible"),
+                         page.locator("textarea")]:
                 try:
-                    page.locator("textarea, input[type=text]").last.fill(focus_prompt[:1500])
+                    el = cand.first
+                    if el.is_visible(timeout=2000):
+                        ta = el; break
                 except Exception:
-                    pass
-            _click_first(page, ["button:has-text('Oluştur')", "button:has-text('Generate')",
-                                "text=Oluştur", "text=Generate", "[aria-label*='Oluştur']"])
+                    continue
+            if ta is None:
+                return {"success": False, "error": "Metin textarea bulunamadı"}
+            ta.click()
+            ta.fill(source_text[:480000])
+            # Angular input olayını tetikle ki "Ekle" butonu aktifleşsin (fill tek başına yetmiyor)
+            page.keyboard.type(" ")
+            page.keyboard.press("Backspace")
+            page.wait_for_timeout(800)
+            # "Ekle" aktifleşene kadar bekle, sonra tıkla (en=True olmalı)
+            try:
+                ekle = page.get_by_role("button", name="Ekle")
+                ekle.wait_for(state="visible", timeout=5000)
+                for _ in range(10):
+                    if ekle.is_enabled():
+                        ekle.click(); break
+                    page.wait_for_timeout(500)
+            except Exception:
+                _click_first(page, ["button:has-text('Insert')", "[aria-label*='Insert']"])
+            page.wait_for_timeout(16000)  # kaynak işlensin
 
-            # 4. Üretim bekle → indir
+            # 3. Studio panelinde "Sesli Özet" KARTI (div[role=button]) → tıklayınca üretim başlar
+            started = False
+            try:
+                card = page.locator("div[role=button][aria-label='Sesli Özet']").first
+                if card.is_visible(timeout=8000):
+                    card.click(); started = True
+            except Exception:
+                pass
+            if not started:
+                _click_first(page, ["text=Sesli Özet", "[aria-label*='Sesli Özet']", "text=Audio Overview"], timeout=6000)
+            page.wait_for_timeout(4000)
+
+            # 4. Üretim bitişini bekle, sonra ses öğesinin menüsünden indir
             deadline = time.time() + wait_audio_min * 60
             dl_path = None
-            while time.time() < deadline and not dl_path:
-                page.wait_for_timeout(8000)
-                for sel in ["[aria-label*='Download']", "[aria-label*='İndir']", "text=Download"]:
+
+            def _try_download():
+                # doğrudan indir butonu
+                for sel in ["[aria-label*='Download']", "[aria-label*='İndir']", "menuitem:has-text('İndir')",
+                            "text=İndir", "text=Download"]:
                     try:
                         el = page.locator(sel).first
-                        if el.is_visible(timeout=1500):
+                        if el.is_visible(timeout=1200):
                             with page.expect_download(timeout=60000) as di:
                                 el.click()
                             d = di.value
-                            dl_path = os.path.join(DL_DIR, f"notebooklm_{int(time.time())}.mp3")
-                            d.save_as(dl_path)
-                            break
+                            pth = os.path.join(DL_DIR, f"notebooklm_{int(time.time())}.mp3")
+                            d.save_as(pth)
+                            return pth
                     except Exception:
                         continue
-                if not dl_path:
+                return None
+
+            while time.time() < deadline and not dl_path:
+                page.wait_for_timeout(10000)
+                # üretim sürüyor mu? "Oluşturuluyor" varsa bekle
+                try:
+                    generating = page.evaluate("()=>document.body.innerText.includes('Oluşturuluyor')")
+                except Exception:
+                    generating = False
+                if generating:
+                    continue
+                # bitmiş olabilir → ses öğesinin 3-nokta menüsünü aç, İndir'i dene
+                dl_path = _try_download()
+                if dl_path:
+                    break
+                for msel in ["[aria-label*='Diğer']", "[aria-label*='More']", "[aria-label*='seçenek']"]:
                     try:
-                        more = page.locator("[aria-label*='More'], [aria-label*='Diğer']").first
-                        if more.is_visible(timeout=1500):
-                            more.click(); page.wait_for_timeout(800)
+                        more = page.locator(msel).last
+                        if more.is_visible(timeout=1200):
+                            more.click(); page.wait_for_timeout(1200)
+                            dl_path = _try_download()
+                            if dl_path:
+                                break
+                            page.keyboard.press("Escape")
                     except Exception:
-                        pass
+                        continue
 
             if dl_path and os.path.exists(dl_path):
                 return {"success": True, "path": dl_path}
