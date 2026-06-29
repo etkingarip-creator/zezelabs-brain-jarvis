@@ -100,9 +100,19 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         out = _os.path.join(rep, f"drama_ep{episode_num}.mp4")
 
         visuals = None
+        storyboard = None
         if with_video and self._video_pipeline:
-            scenes = [f"{genre} korean drama scene, cinematic vertical, emotional, dramatic lighting",
-                      f"{genre} korean drama confrontation, tense, vertical cinematic"]
+            # STORYBOARD → planlı + karakter-tutarlı kareler (rastgele sahne değil)
+            scenes = None
+            if self.crew:
+                storyboard = await self.crew.storyboard.draft(
+                    self.ask_llm, f"{genre} (Kore-tarzı mikrodrama bölüm {episode_num})",
+                    num_shots=3, vertical=True, style="korean drama cinematic")
+                if storyboard and storyboard.get("visual_prompts"):
+                    scenes = storyboard["visual_prompts"][:3]
+            if not scenes:
+                scenes = [f"{genre} korean drama scene, cinematic vertical, emotional",
+                          f"{genre} korean drama confrontation, tense, vertical cinematic"]
             paths = [_os.path.join(rep, f"dr_sc{i}.mp4") for i in range(len(scenes))]
             async def _g(pr, pa):
                 return await self._video_pipeline.generate(prompt=pr, output_path=pa,
@@ -122,7 +132,8 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                                   lang=lang, engine=engine)
         if not res:
             return {"success": False, "error": "mikrodrama bölümü üretilemedi (XTTS gerekli)"}
-        return {"success": True, "mode": "microdrama", "genre": genre, **res}
+        return {"success": True, "mode": "microdrama", "genre": genre,
+                "storyboard_shots": len(storyboard["shots"]) if storyboard else 0, **res}
 
     async def produce_sleep_story(self, topic: str, target_minutes: int = 5,
                                   niche: str = "history", with_visuals: bool = True,
@@ -140,17 +151,16 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         if reuse_visuals and _os.path.exists(_os.path.join(rep, "sl_concat.mp4")):
             visuals = _os.path.join(rep, "sl_concat.mp4")  # mevcut görsel, GLM yok
         elif with_visuals and self._video_pipeline:
-            # Konuya uygun sahne tarifleri üret (atmosferik, sinematik, sakin)
-            sc_resp = await self.ask_llm(
-                prompt=f"'{topic}' uyku belgeseli için {scene_count} atmosferik sinematik sahne tarifi (İngilizce, "
-                       f"sakin, görkemli). SADECE JSON: {{\"scenes\":[\"...\"]}}",
-                system_prompt="Sinematik sahne yönetmenisin. Sakin, atmosferik, belgesel tarzı.")
-            try:
-                import json as _json, re as _re
-                scenes = _json.loads(_re.search(r'\{.*\}', sc_resp, _re.DOTALL).group(0)).get("scenes", [])
-            except Exception:
+            # STORYBOARD → planlı atmosferik kareler (sahne tarifi yerine çekim planı)
+            scenes = None
+            if self.crew:
+                sb = await self.crew.storyboard.draft(
+                    self.ask_llm, f"{topic} (sakin uyku belgeseli, atmosferik)",
+                    num_shots=scene_count, vertical=False, style="calm atmospheric documentary")
+                if sb and sb.get("visual_prompts"):
+                    scenes = sb["visual_prompts"][:scene_count]
+            if not scenes:
                 scenes = [f"{topic}, cinematic atmospheric wide shot, calm, documentary"]
-            scenes = scenes[:scene_count] or [topic]
             paths = [_os.path.join(rep, f"sl_sc{i}.mp4") for i in range(len(scenes))]
 
             async def _g(pr, pa):
