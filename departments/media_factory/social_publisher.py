@@ -31,9 +31,9 @@ def platform_configured(platform: str) -> Dict:
     """Platformun gerçek yayın için yapılandırılıp yapılandırılmadığı + eksik credential."""
     p = platform.lower()
     if p == "youtube":
-        ok = bool(os.getenv("YOUTUBE_OAUTH_TOKEN") or os.path.exists(os.getenv("YOUTUBE_CLIENT_SECRET_PATH", "client_secret.json")))
+        ok = os.path.exists(os.getenv("YOUTUBE_TOKEN_PATH", "youtube_token.json"))
         return {"platform": "youtube", "configured": ok,
-                "needs": "" if ok else "OAuth2: client_secret.json + youtube.upload token"}
+                "needs": "" if ok else "youtube_token.json (python tools/get_youtube_token.py ile al)"}
     if p == "tiktok":
         ok = bool(os.getenv("TIKTOK_ACCESS_TOKEN"))
         return {"platform": "tiktok", "configured": ok,
