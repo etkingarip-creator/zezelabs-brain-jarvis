@@ -42,10 +42,10 @@ def stage1_find_niches(seed: str = "") -> str:
         "Her nişi şu kriterlere göre 10 üzerinden PUANLA (kanıtla):\n"
         "a) yüksek reklam geliri (CPM/RPM) b) yüksek izlenme talebi c) düşük/orta rekabet "
         "d) yüz göstermeden üretilebilirlik e) uzun-vade içerik çıkarılabilirlik.\n"
-        "Toplam skor + her kriter ayrı. EN MANTIKLI 5 nişi seç (yeni başlayan için). "
-        "Her niş için en uygun platform+format (YT-uzun / Shorts / TikTok-IG-dikey) belirt.\n"
-        'SADECE JSON: {"niches":[{"name":"","scores":{"cpm":0,"demand":0,"competition":0,'
-        '"faceless":0,"longevity":0},"total":0,"platform_format":"","evidence":""}],"top5":["..."]}'
+        "EN MANTIKLI 6 nişi ver (yeni başlayan için). Her niş için platform+format "
+        "(YT-uzun/Shorts/TikTok-IG-dikey). evidence TEK kısa cümle (token tasarrufu — kesilmesin).\n"
+        'SADECE GEÇERLİ JSON (markdown yok), KISA tut: {"niches":[{"name":"","scores":{"cpm":0,'
+        '"demand":0,"competition":0,"faceless":0,"longevity":0},"total":0,"platform_format":"","evidence":""}],"top5":["..."]}'
     )
 
 
@@ -65,12 +65,11 @@ def stage2_validate(niche: str) -> str:
 
 def stage3_subniches(niche: str) -> str:
     return (
-        f"GÖREV: '{niche}' için DÜŞÜK rekabet + TALEBİ olan 10 alt-niş.\n"
-        "Her alt-niş için: hedef kitle, 10 video fikri, 5 başlık örneği, thumbnail açısı, "
-        "görsel tarz, tahmini gelir potansiyeli, neden girilmeli, EN UYGUN platform+format "
-        "(YT-uzun/Shorts/TikTok-IG-dikey) + talep kanıtı.\n"
-        'SADECE JSON: {"subniches":[{"name":"","audience":"","video_ideas":["..."],"titles":["..."],'
-        '"thumbnail_angle":"","visual_style":"","revenue_potential":"","why":"","platform_format":"","demand_evidence":""}]}'
+        f"GÖREV: '{niche}' için DÜŞÜK rekabet + TALEBİ olan 8 alt-niş (KOMPAKT — kesilmesin).\n"
+        "Her alt-niş için KISA: hedef kitle, 3 video fikri, 1 başlık örneği, görsel tarz, "
+        "platform+format, neden + talep (tek cümle).\n"
+        'SADECE GEÇERLİ JSON (markdown yok, kısa): {"subniches":[{"name":"","audience":"",'
+        '"video_ideas":["3 adet"],"title":"","visual_style":"","platform_format":"","why":""}]}'
     )
 
 
@@ -79,9 +78,10 @@ def stage4_competitor(niche: str) -> str:
         f"GÖREV: '{niche}' için rakip analizi + UYGULANABİLİR kanal başlangıç stratejisi.\n"
         "Büyük kanalların en çok izlenen videolarını incele: a) çalışan başlık formatları "
         "b) tekrar tekrar izlenen konular c) rakiplerin içerik AÇIKLARI d) yeni kanalın öne çıkış açısı "
-        "e) ilk 30 günde test edilecek video fikirleri. İzlenme-hızı (view velocity) ipuçlarını da değerlendir.\n"
-        'SADECE JSON: {"winning_title_formats":["..."],"evergreen_topics":["..."],"content_gaps":["..."],'
-        '"differentiation_angle":"","first_30d_tests":["..."],"channel_start_strategy":""}'
+        "e) ilk 30 günde test edilecek video fikirleri.\n"
+        "KOMPAKT tut (kesilmesin): her liste max 5 madde, strateji 2-3 cümle.\n"
+        'SADECE GEÇERLİ JSON (markdown yok): {"winning_title_formats":["max5"],"evergreen_topics":["max5"],'
+        '"content_gaps":["max5"],"differentiation_angle":"","first_30d_tests":["max5"],"channel_start_strategy":""}'
     )
 
 

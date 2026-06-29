@@ -77,10 +77,20 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         from departments.media_factory import niche_research_playbook as pb
 
         def _parse(resp):
-            try:
-                return _json.loads(_re.search(r'\{.*\}', resp, _re.DOTALL).group(0))
-            except Exception:
+            if not resp:
                 return {}
+            s = resp.strip()
+            m = _re.search(r"```(?:json)?\s*(.*?)```", s, _re.DOTALL)  # markdown çiti
+            if m:
+                s = m.group(1).strip()
+            b = _re.search(r"\{.*\}", s, _re.DOTALL)
+            cand = b.group(0) if b else s
+            for attempt in (cand, s):
+                try:
+                    return _json.loads(attempt)
+                except Exception:
+                    continue
+            return {}
         sysp = "Sen niş araştırma uzmanısın. Tahmin etmezsin; gerçek talep sinyali + sayısal kanıtla karar verirsin."
         out = {"seed": seed, "stages": {}}
 
