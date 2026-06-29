@@ -71,7 +71,11 @@ EXPERTISE = {
     "media_factory": (
         "[İLERİ MEDYA] Viral hook taksonomisi (hook_library), ilk-3sn kuralı, pattern interrupt, "
         "retention editing, platform-özel format. Hook→Problem→Çözüm→CTA. İçeriği 'güzel' değil "
-        "'kaydırmayı durduran ve izleten' diye tasarla."
+        "'kaydırmayı durduran ve izleten' diye tasarla.\n"
+        "[NİŞ DİSİPLİNİ] Profesyoneller nişi TAHMİN etmez: önce TALEBİ ölç (YT autocomplete/Reddit/"
+        "Trends), sonra REKABETİ incele (sayısal eşik, gir/girilmez net), EN SON üretim sistemini kur. "
+        "Platform+format eşle (YT-uzun/Shorts/TikTok-IG-dikey). Gelir yolu ≥2. Her plan net kill/"
+        "continue eşiği (CTR≥%4, retention, izlenme-hızı) içersin. Genel/muğlak cevap yok."
     ),
     "zeze_academy": (
         "[İLERİ EĞİTİM] Bloom taksonomisi, aralıklı tekrar (spaced repetition), öğrenme hedefleri "

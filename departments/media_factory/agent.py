@@ -50,6 +50,43 @@ except ImportError:
 class MediaFactoryAgent(BaseDepartmentAgent):
     department = "media_factory"
 
+    async def run_niche_research(self, seed: str = "", deep: bool = True) -> Dict[str, Any]:
+        """NİŞ ARAŞTIRMA PLAYBOOK — 5 aşamalı profesyonel huni (talep→rekabet→sistem).
+        deep=True ise seçilen ilk niş için tüm aşamaları (validate→subniche→rakip→30g plan) yürütür."""
+        import json as _json, re as _re
+        from departments.media_factory import niche_research_playbook as pb
+
+        def _parse(resp):
+            try:
+                return _json.loads(_re.search(r'\{.*\}', resp, _re.DOTALL).group(0))
+            except Exception:
+                return {}
+        sysp = "Sen niş araştırma uzmanısın. Tahmin etmezsin; gerçek talep sinyali + sayısal kanıtla karar verirsin."
+        out = {"seed": seed, "stages": {}}
+
+        s1 = _parse(await self.ask_llm(pb.stage1_find_niches(seed), system_prompt=sysp))
+        out["stages"]["1_niches"] = s1
+        top5 = s1.get("top5") or [n.get("name") for n in s1.get("niches", [])[:5]]
+        out["top5"] = top5
+        if not deep or not top5:
+            return {"success": bool(top5), **out}
+
+        target = top5[0]
+        out["target_niche"] = target
+        out["stages"]["2_validate"] = _parse(await self.ask_llm(pb.stage2_validate(target), system_prompt=sysp))
+        out["stages"]["3_subniches"] = _parse(await self.ask_llm(pb.stage3_subniches(target), system_prompt=sysp))
+        out["stages"]["4_competitor"] = _parse(await self.ask_llm(pb.stage4_competitor(target), system_prompt=sysp))
+        out["stages"]["5_plan"] = _parse(await self.ask_llm(pb.stage5_plan(target), system_prompt=sysp))
+
+        # rapor dosyala
+        import os as _os
+        rep = _os.path.join(self.workspace_root, "departments", self.department, "reports")
+        _os.makedirs(rep, exist_ok=True)
+        with open(_os.path.join(rep, "niche_research.json"), "w", encoding="utf-8") as f:
+            _json.dump(out, f, indent=2, ensure_ascii=False)
+        decision = out["stages"]["2_validate"].get("decision", "?")
+        return {"success": True, "target_niche": target, "decision": decision, **out}
+
     async def produce_microdrama(self, genre: str = "intikam ve aşk", episode_num: int = 1,
                                  prev_cliffhanger: str = "", lang: str = "tr",
                                  with_video: bool = True, engine: str = "xtts",
