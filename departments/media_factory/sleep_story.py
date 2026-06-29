@@ -51,7 +51,8 @@ async def _gen_long_script(ask_llm, topic: str, target_minutes: int, lang: str =
 async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minutes: int = 5,
                             visuals_video: Optional[str] = None,
                             voice: Optional[str] = None,
-                            sfx_prompt: Optional[str] = None, lang: str = "en") -> Optional[dict]:
+                            sfx_prompt: Optional[str] = None, lang: str = "en",
+                            title: Optional[str] = None) -> Optional[dict]:
     # Dile göre anlatıcı sesi: TR → tr-TR-AhmetNeural (karizmatik erkek), EN → Christopher
     if voice is None:
         voice = "tr-TR-AhmetNeural" if lang == "tr" else "en-US-ChristopherNeural"
@@ -134,8 +135,15 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
                        capture_output=True, timeout=60)
 
     # 5. Birleştir — çok yavaş pan + narration + ambient (yatay 1920x1080 uyku formatı)
+    title_filter = ""
+    if title:
+        safe = title.replace("'", "").replace(":", " -").replace("\\", "")
+        # Başlık/hook kartı: ilk 10sn üstte, sonra kaybolur (drawtext + fade)
+        title_filter = (f",drawtext=text='{safe}':fontcolor=white:fontsize=52:"
+                        f"x=(w-text_w)/2:y=120:box=1:boxcolor=black@0.5:boxborderw=20:"
+                        f"enable='lt(t,10)'")
     vchain = ("[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
-              "zoompan=z='min(zoom+0.0002,1.10)':d=1:s=1920x1080:fps=24[v]")
+              "zoompan=z='min(zoom+0.0002,1.10)':d=1:s=1920x1080:fps=24" + title_filter + "[v]")
     # Anlatıcı: loudnorm (net+yüksek). Müzik: duyulur arka plan. SFX: senaryo atmosferi.
     cmd = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", visuals_video, "-i", voice_mp3]
     voice_f = "[1:a]loudnorm=I=-14:TP=-1.5,volume=1.3,aresample=44100[vo]"

@@ -50,6 +50,38 @@ except ImportError:
 class MediaFactoryAgent(BaseDepartmentAgent):
     department = "media_factory"
 
+    async def prepare_notebooklm_source(self, topic: str) -> Dict[str, Any]:
+        """NotebookLM adımı 1: konu → NotebookLM'e yapıştırılacak EN kaynak metni + odak + başlık.
+        Kullanıcı bunu NotebookLM'e koyup Audio Overview (EN) üretir, mp3'ü inbox'a atar."""
+        import os as _os
+        from departments.media_factory.notebooklm_pipeline import prepare_source
+        src = await prepare_source(self.ask_llm, topic, lang="en")
+        rep = _os.path.join(self.workspace_root, "departments", self.department, "reports", "notebooklm")
+        _os.makedirs(_os.path.join(rep, "inbox"), exist_ok=True)
+        with open(_os.path.join(rep, "source.txt"), "w", encoding="utf-8") as f:
+            f.write(src.get("source_document", ""))
+        return {"success": True, "topic": topic, **src,
+                "instructions": ("1) source.txt içeriğini NotebookLM'e kaynak olarak ekle "
+                                 "2) Audio Overview → Customize → focus_prompt'u yapıştır → EN üret "
+                                 "3) mp3'ü indir → " + _os.path.join(rep, "inbox") + " klasörüne koy"),
+                "inbox": _os.path.join(rep, "inbox")}
+
+    async def assemble_notebooklm(self, audio_path: str, topic: str, title: str = "",
+                                  publish: bool = False, vertical: bool = False) -> Dict[str, Any]:
+        """NotebookLM adımı 3: indirilen mp3 → storyboard+GLM görsel + montaj → (ops) YouTube."""
+        import os as _os
+        from departments.media_factory.notebooklm_pipeline import assemble_from_audio
+        rep = _os.path.join(self.workspace_root, "departments", self.department, "reports", "notebooklm")
+        _os.makedirs(rep, exist_ok=True)
+        out = _os.path.join(rep, f"nb_{abs(hash(topic)) % 10000}.mp4")
+        res = await assemble_from_audio(audio_path, topic, out, video_pipeline=self._video_pipeline,
+                                        crew=self.crew, ask_llm=self.ask_llm, vertical=vertical)
+        if not res.get("success"):
+            return res
+        if publish:
+            res["social"] = await self.publish_to_social(res["path"], title or topic, platforms=["youtube"])
+        return res
+
     async def publish_to_social(self, video_path: str, topic: str,
                                 platforms: List[str] = None, lang: str = "tr") -> Dict[str, Any]:
         """Sosyal Medya Uzmanı: her platform için özel paket üret + yayınla (credential varsa).
@@ -168,7 +200,8 @@ class MediaFactoryAgent(BaseDepartmentAgent):
     async def produce_sleep_story(self, topic: str, target_minutes: int = 5,
                                   niche: str = "history", with_visuals: bool = True,
                                   scene_count: int = 3, reuse_visuals: bool = False,
-                                  sfx_prompt: str = None, lang: str = "en") -> Dict[str, Any]:
+                                  sfx_prompt: str = None, lang: str = "en",
+                                  title: str = None) -> Dict[str, Any]:
         """MOD 2 — uyku hikayesi. Anlatıcı narration + ACE-Step müzik + senaryo SFX + görsel.
         reuse_visuals=True → mevcut sl_concat.mp4'ü kullan (GLM'e dokunma, bütçe)."""
         import os as _os, asyncio as _aio, subprocess as _sp
@@ -208,7 +241,7 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                          "-c:v", "libx264", "-pix_fmt", "yuv420p", visuals], capture_output=True, timeout=120)
 
         res = await build_sleep_story(self.ask_llm, topic, out, target_minutes=target_minutes,
-                                      visuals_video=visuals, lang=lang,
+                                      visuals_video=visuals, lang=lang, title=title,
                                       sfx_prompt=sfx_prompt or f"atmospheric ambient soundscape for {topic}, immersive, soft")
         if not res:
             return {"success": False, "error": "sleep story üretilemedi"}
