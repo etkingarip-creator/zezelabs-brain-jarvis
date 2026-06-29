@@ -50,6 +50,26 @@ except ImportError:
 class MediaFactoryAgent(BaseDepartmentAgent):
     department = "media_factory"
 
+    async def publish_to_social(self, video_path: str, topic: str,
+                                platforms: List[str] = None, lang: str = "tr") -> Dict[str, Any]:
+        """Sosyal Medya Uzmanı: her platform için özel paket üret + yayınla (credential varsa).
+        platforms: ['youtube','tiktok','instagram']. Credential yoksa paket hazır + 'gerekli' döner."""
+        platforms = platforms or ["youtube", "tiktok", "instagram"]
+        if not self.crew:
+            return {"success": False, "error": "crew yok"}
+        results = {}
+        for p in platforms:
+            pkg = await self.crew.social.craft_package(self.ask_llm, topic, p, lang=lang)
+            pub = self.crew.social.publish(p, video_path, pkg)
+            results[p] = {"package": {"title": pkg.get("title"), "hashtags": pkg.get("hashtags"),
+                                      "optimal_time": pkg.get("optimal_time"), "format": pkg.get("format_rule")},
+                          "publish": pub}
+        published = [p for p, r in results.items() if r["publish"].get("published")]
+        return {"success": True, "published": published,
+                "needs_credentials": {p: r["publish"].get("needs") for p, r in results.items()
+                                      if not r["publish"].get("published") and r["publish"].get("needs")},
+                "platforms": results}
+
     async def run_niche_research(self, seed: str = "", deep: bool = True) -> Dict[str, Any]:
         """NİŞ ARAŞTIRMA PLAYBOOK — 5 aşamalı profesyonel huni (talep→rekabet→sistem).
         deep=True ise seçilen ilk niş için tüm aşamaları (validate→subniche→rakip→30g plan) yürütür."""

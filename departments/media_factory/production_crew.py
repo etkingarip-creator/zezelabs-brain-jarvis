@@ -129,8 +129,36 @@ class Editor:
         return output if r.returncode == 0 and os.path.exists(output) else None
 
 
+class SocialMediaManager:
+    """Sosyal Medya Uzmanı — platform-özel paket (başlık/açıklama/hashtag/optimal saat/format)
+    üretir ve YouTube/TikTok/IG'ye yayınlar (credential varsa; yoksa paket + 'gerekli credential')."""
+    async def craft_package(self, ask_llm, topic: str, platform: str, lang: str = "tr") -> Dict:
+        from departments.media_factory.social_publisher import OPTIMAL_TIMES, HASHTAG_LIMITS, FORMAT_RULES
+        import json, re
+        p = platform.lower()
+        htlim = HASHTAG_LIMITS.get("youtube" if "youtube" in p else p, 10)
+        resp = await ask_llm(
+            prompt=f"'{topic}' için {platform} yayın paketi ({lang}). Platforma-ÖZEL optimize et. "
+                   f"SADECE JSON: {{\"title\":\"\",\"description\":\"\",\"hashtags\":[{htlim} adede kadar]}}",
+            system_prompt=f"Sen sosyal medya uzmanısın. {platform} algoritmasını ve kitlesini bilirsin; tıklatan başlık+açıklama+hashtag yazarsın.")
+        try:
+            pkg = json.loads(re.search(r'\{.*\}', resp, re.DOTALL).group(0))
+        except Exception:
+            pkg = {"title": topic, "description": topic, "hashtags": []}
+        pkg["hashtags"] = pkg.get("hashtags", [])[:htlim]
+        pkg["optimal_time"] = OPTIMAL_TIMES.get("youtube" if "youtube" in p else p, "")
+        pkg["format_rule"] = FORMAT_RULES.get(p, FORMAT_RULES.get("youtube_shorts"))
+        pkg["platform"] = platform
+        return pkg
+
+    def publish(self, platform: str, video_path: str, pkg: Dict) -> Dict:
+        from departments.media_factory.social_publisher import publish as _pub
+        return _pub(platform, video_path, pkg.get("title", ""), pkg.get("description", ""),
+                    pkg.get("hashtags", []))
+
+
 class Director:
-    """Yönetmen — ekibi (Senarist/Ses Müh./Ses Tas./Görüntü Yön./Kurgucu) koordine eder."""
+    """Yönetmen — ekibi (Senarist/Storyboard/Ses/Görüntü/Kurgu/Sosyal Medya) koordine eder."""
     def __init__(self, agent):
         self.agent = agent
         self.storyboard = StoryboardArtist()
@@ -138,10 +166,11 @@ class Director:
         self.sound = SoundDesigner()
         self.dop = Cinematographer(getattr(agent, "_video_pipeline", None))
         self.editor = Editor()
+        self.social = SocialMediaManager()
 
     def crew(self) -> Dict[str, str]:
         return {"Senarist": "ask_llm + blueprint",
                 "Storyboard Sanatçısı": "sahne-sahne çekim planı (tutarlılık omurgası)",
                 "Ses Mühendisi": "XTTS/edge çok-ses", "Ses Tasarımcısı": "ACE-Step müzik+SFX",
                 "Görüntü Yönetmeni": "storyboard→GLM sahne", "Kurgucu (Editor)": "ffmpeg ses+görüntü montajı",
-                "Yönetmen": "koordinasyon"}
+                "Sosyal Medya Uzmanı": "YouTube/TikTok/IG paket + yayın", "Yönetmen": "koordinasyon"}
