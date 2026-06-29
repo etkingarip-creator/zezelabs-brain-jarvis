@@ -66,6 +66,29 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                                  "3) mp3'ü indir → " + _os.path.join(rep, "inbox") + " klasörüne koy"),
                 "inbox": _os.path.join(rep, "inbox")}
 
+    async def notebooklm_login(self, timeout_min: int = 5) -> Dict[str, Any]:
+        """Tek seferlik: NotebookLM'e Google ile giriş (kalıcı profil). Headed tarayıcı açılır."""
+        import asyncio as _aio
+        from departments.media_factory.notebooklm_browser import ensure_login
+        return await _aio.to_thread(ensure_login, timeout_min)
+
+    async def produce_notebooklm_video(self, topic: str, publish: bool = False,
+                                       vertical: bool = False, headless: bool = True) -> Dict[str, Any]:
+        """UÇTAN UCA otonom: konu → kaynak → NotebookLM ses (tarayıcı) → görsel+montaj → (ops) YouTube."""
+        import asyncio as _aio
+        from departments.media_factory.notebooklm_browser import create_audio
+        src = await self.prepare_notebooklm_source(topic)
+        title = src.get("youtube_title") or topic
+        audio = await _aio.to_thread(create_audio, src.get("source_document", topic),
+                                     src.get("focus_prompt", ""), "en", headless)
+        if not audio.get("success"):
+            return {"success": False, "stage": "notebooklm_audio", **audio, "source": src}
+        res = await self.assemble_notebooklm(audio["path"], topic, title=title,
+                                             publish=publish, vertical=vertical)
+        res["audio_path"] = audio["path"]
+        res["title"] = title
+        return res
+
     async def assemble_notebooklm(self, audio_path: str, topic: str, title: str = "",
                                   publish: bool = False, vertical: bool = False) -> Dict[str, Any]:
         """NotebookLM adımı 3: indirilen mp3 → storyboard+GLM görsel + montaj → (ops) YouTube."""
