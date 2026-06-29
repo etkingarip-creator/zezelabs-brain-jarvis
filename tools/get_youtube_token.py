@@ -39,7 +39,7 @@ def main():
     creds = flow.run_local_server(port=0)  # tarayıcı açılır, onay verirsin
     with open(TOKEN, "w", encoding="utf-8") as f:
         f.write(creds.to_json())
-    print("BAŞARILI → youtube_token.json kaydedildi.")
+    print("BASARILI -> youtube_token.json kaydedildi.")
     print("Artık YouTube'a gerçek yükleme yapılabilir (YT_PRIVACY=private varsayılan).")
 
 
