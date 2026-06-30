@@ -16,7 +16,9 @@ UNICORN_DIRECTIVE = (
     "2. Yapılmayanı yap — rakiplerin/standartların atladığı açığı yakala.\n"
     "3. Düşünülmeyeni düşün — birinci dereceden çözümün ikinci/üçüncü dereceden sonuçlarını analiz et.\n"
     "4. Somut ve uygulanabilir ol — soyut tavsiye değil, sayı/eşik/adım/örnek ver.\n"
-    "5. Riski ve fırsat maliyetini açıkça belirt — kör nokta bırakma."
+    "5. Riski ve fırsat maliyetini açıkça belirt — kör nokta bırakma.\n"
+    "6. KANITLA — 'çalışıyor/tamam' deme; göster (test/ekran görüntüsü/sayı). Varsayılan tutum: "
+    "önce hata ara (default to finding issues). Sahte-yeşil yok — kanıtsız başarı beyanı yasak."
 )
 
 # Departman -> cutting-edge uzmanlık paketi (gerçek teknikler, buzzword değil)
@@ -121,9 +123,86 @@ EXPERTISE = {
 }
 
 
+# agency-agents (232 persona, MIT) damıtımı — mevcut paketlere EK somut çerçeveler.
+# Wholesale/buzzword değil: her departmana ilgili bölümün gerçek tekniklerinden damıtıldı.
+AGENCY_EXPERTISE = {
+    "app_factory": (
+        "[SaaS DERİNLİĞİ] Çok-kiracılık (tenant izolasyonu), abonelik/faturalama katmanları "
+        "(tiering + usage metering + dunning), RBAC, onboarding/aktivasyon hunisi (aha-moment), "
+        "MRR/NRR/churn takibi, Customer Success playbook, GTM wedge. SaaS = sürekli gelir: "
+        "activation+retention'ı baştan tasarla, sadece 'app' değil işleyen abonelik ürünü kur."
+    ),
+    "zeze_dev": (
+        "[API & DEĞİŞİM YÖNETİŞİMİ] API contract governance (sürümleme + geriye-uyum sözleşmesi), "
+        "migration safety (expand-contract), observability-by-design (RED/USE metrikleri), code-review disiplini."
+    ),
+    "zeze_business": (
+        "[SATIŞ ÇERÇEVELERİ] SPIN/Gap/Sandler pain-funnel, gerçek ICP tanımı, account health + "
+        "expansion (NRR), discovery koçluğu. His değil pain+değer ile sat."
+    ),
+    "zeze_trend": (
+        "[TREND→AKSİYON] Gerçek-zamanlı sinyal tespiti → pazar fırsatı çıkarımı, platformlar-arası "
+        "lokalizasyon, öncü gösterge takibi. Trendi eyleme çevir, sadece raporlama."
+    ),
+    "zeze_sec": (
+        "[UYUM YAŞAM DÖNGÜSÜ] Scoping→gap assessment→remediation→audit→continuous compliance; "
+        "AI/LLM AppSec (prompt injection, model abuse), API security."
+    ),
+    "zeze_design": (
+        "[DAVRANIŞSAL + SİSTEM] Behavioral analysis, brand foundation, base component/token sistemi, "
+        "delight↔usability dengesi, accessibility foundation (WCAG)."
+    ),
+    "media_factory": (
+        "[AEO KATMANLARI] Answer-Engine Optimization: discovery→parsability→capability katmanları, "
+        "platformlar-arası lokalizasyon, brief'i pressure-test et."
+    ),
+    "zeze_comms": (
+        "[İÇERİK MİMARİSİ+AEO] Discovery/parsability/capability katmanları, cross-platform "
+        "lokalizasyon, real-time trend→mesaj dönüşümü."
+    ),
+    "zeze_academy": (
+        "[İNANDIRICI ANLATI] Character arc değerlendirme, kültürel derinlik, tarihsel mit-sorgulama, "
+        "gerçekçi psikolojik tepkiler — öğreten + sürükleyen içerik."
+    ),
+    "zeze_game": (
+        "[OYUN ÜRETİM DİSİPLİNİ] Design pillars, architecture audit, audio design document, "
+        "shader spec, level design akışı."
+    ),
+    "zeze_ops": (
+        "[PORTFÖY & SLA] Portföy orkestrasyonu, cross-functional koordinasyon, SLA/escalation, "
+        "infra bakım runbook."
+    ),
+    "zeze_production": (
+        "[TESLİM YÖNETİŞİMİ] Architecture/design audit kapıları, kritik yol + risk azaltma, "
+        "kalite sertifikasyonu (quality gates)."
+    ),
+    "zeze_compliance": (
+        "[UYUM YAŞAM DÖNGÜSÜ] Continuous compliance, audit support, veri-işleme kaydı; "
+        "her kurala statü + kanıt + remediation."
+    ),
+    "zeze_aro": (
+        "[NUDGE + CS] Momentum nudge motoru, executive dashboard, customer success playbook, "
+        "cohort→aksiyon dönüşümü."
+    ),
+    "zeze_rnd": (
+        "[İSTİHBARAT + MİMARİ] Competitive intelligence, architecture audit, AI-engineer pratiği, "
+        "prototip→audit→entegrasyon."
+    ),
+    "crypto_trading": (
+        "[GELİŞMİŞ FİNANS] Alternative-data entegrasyonu, gelişmiş modelleme/senaryo planlama, "
+        "analitik bütünlük (data integrity)."
+    ),
+    "zeze_betting": (
+        "[GELİŞMİŞ MODELLEME] Alternative-data entegrasyonu, senaryo modelleme, reconciliation disiplini."
+    ),
+}
+
+
 def get_expertise_brief(department: str) -> str:
-    """Departmanın uzmanlık paketi + evrensel unicorn direktifi. Yoksa sadece direktif."""
-    pack = EXPERTISE.get((department or "").lower().strip(), "")
-    if pack:
-        return "\n\n" + pack + UNICORN_DIRECTIVE
+    """Departmanın uzmanlık paketi + agency-agents damıtımı + evrensel unicorn direktifi."""
+    key = (department or "").lower().strip()
+    pack = EXPERTISE.get(key, "")
+    agency = AGENCY_EXPERTISE.get(key, "")
+    if pack or agency:
+        return "\n\n" + (pack + ("\n" + agency if agency else "")) + UNICORN_DIRECTIVE
     return UNICORN_DIRECTIVE
