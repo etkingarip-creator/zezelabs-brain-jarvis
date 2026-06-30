@@ -1156,9 +1156,17 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                                    "bölümlü dizi", "vertical drama"]):
             if hasattr(self, "produce_microdrama"):
                 return await self.produce_microdrama(topic, task_data=task_data)
-        # Mod 1 — Tech affiliate short/uzun (blueprint)
-        if any(k in desc for k in ["short", "shorts", "tiktok", "reel", "affiliate", "ai araç",
-                                   "ai tool", "tanıt", "inceleme", "review", "tech"]):
+        # Mod 1 — NotebookLM AI-araç inceleme PODCAST (onaylı para-kazandıran format: gerçek-test)
+        if any(k in desc for k in ["notebooklm", "podcast", "ai araç incele", "ai tool review",
+                                   "tested workflow", "iş akışı", "araç testi", "ai araç", "ai tool",
+                                   "inceleme", "review", "affiliate"]):
+            vertical = any(k in desc for k in ["dikey", "vertical", "short", "tiktok", "reel", "ig"])
+            return await self.produce_notebooklm_video(
+                topic, publish=bool(task_data.get("publish", False)), vertical=vertical,
+                tested_tools=task_data.get("tested_tools"), keywords=task_data.get("keywords"),
+                affiliate_tools=task_data.get("affiliate_tools"))
+        # Mod 1b — Eski tech short/uzun blueprint (sadece açık 'short/tiktok/reel' istenirse)
+        if any(k in desc for k in ["short", "shorts", "tiktok", "reel", "tanıt", "tech"]):
             with_video = any(k in desc for k in ["video", "üret", "çek", "görsel"])
             return await self.produce_short(topic, with_video=with_video)
 
