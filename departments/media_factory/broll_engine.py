@@ -81,6 +81,39 @@ def fetch_pexels_clips(keywords: List[str], out_dir: str, count: int = 8,
     return paths
 
 
+# ---------- Pexels FOTO (thumbnail için yüksek-çöz. dolu özne) ----------
+def fetch_pexels_photos(keywords: List[str], out_dir: str, count: int = 3,
+                        vertical: bool = False, api_key: str = "") -> List[str]:
+    """Thumbnail arka planı için yüksek-çözünürlüklü Pexels fotoğrafı (dolu/merkezi özne)."""
+    api_key = api_key or os.getenv("PEXELS_API_KEY", "").strip()
+    if not api_key:
+        return []
+    os.makedirs(out_dir, exist_ok=True)
+    orient = "portrait" if vertical else "landscape"
+    paths: List[str] = []
+    for kw in keywords:
+        if len(paths) >= count:
+            break
+        try:
+            url = ("https://api.pexels.com/v1/search?query=" + urllib.parse.quote(kw) +
+                   f"&orientation={orient}&per_page=5&size=large")
+            req = urllib.request.Request(url, headers={"Authorization": api_key, "User-Agent": _UA})
+            data = json.loads(urllib.request.urlopen(req, timeout=_TIMEOUT).read().decode())
+            for ph in data.get("photos", []):
+                link = (ph.get("src", {}).get("large2x") or ph.get("src", {}).get("original")
+                        or ph.get("src", {}).get("large"))
+                if not link:
+                    continue
+                dst = os.path.join(out_dir, f"photo_{len(paths)}.jpg")
+                if _download(link, dst):
+                    paths.append(dst)
+                if len(paths) >= count:
+                    break
+        except Exception:
+            continue
+    return paths
+
+
 # ---------- Pixabay b-roll (Pexels yedeği/takviyesi) ----------
 def fetch_pixabay_clips(keywords: List[str], out_dir: str, count: int = 8,
                         vertical: bool = False, api_key: str = "") -> List[str]:
@@ -306,12 +339,14 @@ def build_broll_video(audio_path: str, output_path: str, clips: List[str],
         return None
     work = os.path.dirname(output_path)
     W, H = (1080, 1920) if vertical else (1920, 1080)
-    # 1. Her klibi sabit süreye normalize et (scale+crop+trim, sessiz)
+    # 1. Her klibi normalize + SİNEMATİK GRADE (kontrast/doygunluk + sıcak ton) + vignette
+    grade = ("eq=contrast=1.09:saturation=1.18:brightness=-0.015,"
+             "colorbalance=rs=0.03:bs=-0.03:gm=0.02,vignette=PI/5,unsharp=3:3:0.4")
     norm = []
     for i, c in enumerate(clips):
         n = os.path.join(work, f"norm_{i}.mp4")
         vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-              f"setsar=1,fps=30")
+              f"setsar=1,fps=30,{grade}")
         r = subprocess.run(["ffmpeg", "-y", "-stream_loop", "-1", "-i", c, "-t", str(scene_sec),
                             "-an", "-vf", vf, "-c:v", "libx264", "-preset", "veryfast",
                             "-pix_fmt", "yuv420p", n], capture_output=True, timeout=180)
