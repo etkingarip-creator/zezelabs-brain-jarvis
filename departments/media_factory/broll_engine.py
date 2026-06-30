@@ -302,17 +302,10 @@ def assemble_rich(audio_path: str, output_path: str, keywords: List[str],
         if more:
             clips += more; src = "pexels+pixabay" if clips else src
     if not clips:
-        # key yok → Pollinations AI görsel → klip
-        src = "pollinations"
-        prompts = image_prompts or [f"{k}, cinematic, high detail, professional" for k in keywords]
-        imgs = fetch_pollinations_images(prompts, os.path.join(work, "imgs"), vertical=vertical)
-        clips = []
-        for i, im in enumerate(imgs):
-            c = _image_to_clip(im, os.path.join(work, f"imgclip_{i}.mp4"), 6.0, W, H)
-            if c:
-                clips.append(c)
-    if not clips:
-        return {"success": False, "error": "ne Pexels ne Pollinations görsel alınamadı", "source": src}
+        # GERÇEK VİDEO yok → statik AI görsel "ilkokul seviyesi", kullanıcı istemiyor → dürüstçe başarısız.
+        return {"success": False, "source": src,
+                "error": "Gerçek stok video (Pexels/Pixabay) alınamadı. Statik görsele düşmüyoruz "
+                         "(kalite çıtası). Pexels/Pixabay key veya ağ/limit kontrol et."}
     if burn_captions is None:
         burn_captions = vertical  # dikey=yak, uzun-form=yakma (soft SRT)
     ass = None
@@ -342,28 +335,60 @@ def build_broll_video(audio_path: str, output_path: str, clips: List[str],
     # 1. Her klibi normalize + SİNEMATİK GRADE (kontrast/doygunluk + sıcak ton) + vignette
     grade = ("eq=contrast=1.09:saturation=1.18:brightness=-0.015,"
              "colorbalance=rs=0.03:bs=-0.03:gm=0.02,vignette=PI/5,unsharp=3:3:0.4")
-    norm = []
-    for i, c in enumerate(clips):
-        n = os.path.join(work, f"norm_{i}.mp4")
-        vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-              f"setsar=1,fps=30,{grade}")
-        r = subprocess.run(["ffmpeg", "-y", "-stream_loop", "-1", "-i", c, "-t", str(scene_sec),
-                            "-an", "-vf", vf, "-c:v", "libx264", "-preset", "veryfast",
-                            "-pix_fmt", "yuv420p", n], capture_output=True, timeout=180)
-        if os.path.exists(n) and os.path.getsize(n) > 5000:
-            norm.append(n)
+    def _norm(src, n, slen):
+        vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=30,{grade}")
+        subprocess.run(["ffmpeg", "-y", "-stream_loop", "-1", "-i", src, "-t", str(slen), "-an", "-vf", vf,
+                        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", n],
+                       capture_output=True, timeout=180)
+        return n if os.path.exists(n) and os.path.getsize(n) > 5000 else None
+
+    def _xfade(scenes, out, xf, slen):
+        if len(scenes) == 1:
+            subprocess.run(["ffmpeg", "-y", "-i", scenes[0], "-c", "copy", out], capture_output=True, timeout=120)
+            return out
+        cur, off = scenes[0], slen - xf
+        for k in range(1, len(scenes)):
+            nx = os.path.join(work, f"_xf{k}.mp4")
+            fc = f"[0:v][1:v]xfade=transition=fade:duration={xf}:offset={off}[v]"
+            subprocess.run(["ffmpeg", "-y", "-i", cur, "-i", scenes[k], "-filter_complex", fc, "-map", "[v]",
+                            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", nx],
+                           capture_output=True, timeout=600)
+            if not (os.path.exists(nx) and os.path.getsize(nx) > 5000):
+                return cur
+            cur, off = nx, off + (slen - xf)
+        return cur
+
+    # 1. GÖVDE sahneleri (grade'li) → crossfade base
+    norm = [r for i, c in enumerate(clips) if (r := _norm(c, os.path.join(work, f"norm_{i}.mp4"), scene_sec))]
     if not norm:
         return None
-    # 2. Süreyi doldurana kadar sahneleri sırayla tekrarla → concat listesi
-    need = math.ceil(dur / scene_sec)
-    seq = [norm[i % len(norm)] for i in range(need)]
-    lst = os.path.join(work, "concat.txt")
-    with open(lst, "w", encoding="utf-8") as f:
-        for s in seq:
-            f.write(f"file '{os.path.abspath(s)}'\n")
+    base = _xfade(norm, os.path.join(work, "body_base.mp4"), 0.8, scene_sec)
+
+    # 2. HİBRİT: HOOK (0-~12s hızlı kesim, enerjik) + GÖVDE (sakin crossfade, süreye döngü)
+    hook_sec = 2.4
+    hook_dur = min(12.0, dur * 0.18)
+    hooks = [r for i in range(max(1, int(hook_dur / hook_sec)))
+             if (r := _norm(clips[i % len(clips)], os.path.join(work, f"hook_{i}.mp4"), hook_sec))]
+    hook_mp4 = os.path.join(work, "hook.mp4")
+    if hooks:
+        hl = os.path.join(work, "hooklist.txt")
+        with open(hl, "w", encoding="utf-8") as f:
+            f.write("".join(f"file '{os.path.abspath(h)}'\n" for h in hooks))
+        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", hl, "-c", "copy", hook_mp4],
+                       capture_output=True, timeout=120)
+    hook_real = hook_sec * len(hooks)
+    body = os.path.join(work, "body.mp4")
+    subprocess.run(["ffmpeg", "-y", "-stream_loop", "-1", "-i", base, "-t", str(max(1.0, dur - hook_real)),
+                    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", body],
+                   capture_output=True, timeout=900)
     bg = os.path.join(work, "broll_bg.mp4")
-    subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
-                    "-t", str(dur), "-c", "copy", bg], capture_output=True, timeout=300)
+    if os.path.exists(hook_mp4) and os.path.exists(body) and hook_real > 1:
+        fc = f"[0:v][1:v]xfade=transition=fade:duration=0.6:offset={max(0.1, hook_real - 0.6)}[v]"
+        subprocess.run(["ffmpeg", "-y", "-i", hook_mp4, "-i", body, "-filter_complex", fc, "-map", "[v]",
+                        "-t", str(dur), "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", bg],
+                       capture_output=True, timeout=1200)
+    if not os.path.exists(bg) and os.path.exists(body):
+        subprocess.run(["ffmpeg", "-y", "-i", body, "-t", str(dur), "-c", "copy", bg], capture_output=True, timeout=300)
     if not os.path.exists(bg):
         return None
     # 3. Altyazı + başlık yak, NotebookLM sesini bindir
