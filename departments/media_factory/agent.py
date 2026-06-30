@@ -73,8 +73,12 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         return await _aio.to_thread(ensure_login, timeout_min)
 
     async def produce_notebooklm_video(self, topic: str, publish: bool = False,
-                                       vertical: bool = False, headless: bool = True) -> Dict[str, Any]:
-        """UÇTAN UCA otonom: konu → kaynak → NotebookLM ses (tarayıcı) → görsel+montaj → (ops) YouTube."""
+                                       vertical: bool = False, headless: bool = True,
+                                       tested_tools: List[str] = None,
+                                       keywords: List[str] = None,
+                                       affiliate_tools: List[Dict] = None) -> Dict[str, Any]:
+        """UÇTAN UCA otonom: konu → kaynak → NotebookLM ses → zengin görsel/altyazı montaj →
+        SEO+affiliate metadata → (ops) YouTube (soft caption dahil)."""
         import asyncio as _aio
         from departments.media_factory.notebooklm_browser import create_audio
         src = await self.prepare_notebooklm_source(topic)
@@ -84,25 +88,40 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         if not audio.get("success"):
             return {"success": False, "stage": "notebooklm_audio", **audio, "source": src}
         res = await self.assemble_notebooklm(audio["path"], topic, title=title,
-                                             publish=publish, vertical=vertical)
+                                             publish=publish, vertical=vertical,
+                                             tested_tools=tested_tools, keywords=keywords,
+                                             affiliate_tools=affiliate_tools)
         res["audio_path"] = audio["path"]
-        res["title"] = title
         return res
 
     async def assemble_notebooklm(self, audio_path: str, topic: str, title: str = "",
-                                  publish: bool = False, vertical: bool = False) -> Dict[str, Any]:
-        """NotebookLM adımı 3: indirilen mp3 → storyboard+GLM görsel + montaj → (ops) YouTube."""
-        import os as _os
-        from departments.media_factory.notebooklm_pipeline import assemble_from_audio
+                                  publish: bool = False, vertical: bool = False,
+                                  tested_tools: List[str] = None, keywords: List[str] = None,
+                                  affiliate_tools: List[Dict] = None) -> Dict[str, Any]:
+        """NotebookLM sesi → zengin görsel+altyazı(SRT/yakılı) montaj → SEO/affiliate metadata → (ops) YouTube."""
+        import os as _os, asyncio as _aio
+        from departments.media_factory.broll_engine import assemble_rich
+        from departments.media_factory import seo_metadata
         rep = _os.path.join(self.workspace_root, "departments", self.department, "reports", "notebooklm")
         _os.makedirs(rep, exist_ok=True)
         out = _os.path.join(rep, f"nb_{abs(hash(topic)) % 10000}.mp4")
-        res = await assemble_from_audio(audio_path, topic, out, video_pipeline=self._video_pipeline,
-                                        crew=self.crew, ask_llm=self.ask_llm, vertical=vertical)
+        kw = keywords or [topic, "AI tools", "automation", "software demo", "technology", "productivity"]
+        # uzun-form=soft SRT (yakma yok), dikey=yakılı (assemble_rich kendi karar verir)
+        res = await _aio.to_thread(assemble_rich, audio_path, out, kw, None, title, vertical, True)
         if not res.get("success"):
             return res
+        # SEO + affiliate metadata (başlık/etiket/açıklama/bölüm)
+        meta = await seo_metadata.build_metadata_package(
+            self.ask_llm, topic, tested_tools or [topic],
+            affiliate_tools or [], avatar="AI entrepreneur")
+        res["metadata"] = meta
+        res["title"] = meta.get("title") or title
         if publish:
-            res["social"] = await self.publish_to_social(res["path"], title or topic, platforms=["youtube"])
+            from departments.media_factory import social_publisher as sp
+            yt = await _aio.to_thread(sp.publish, "youtube", res["path"], res["title"],
+                                      meta.get("description", ""), meta.get("tags", []),
+                                      res.get("srt_path", "") or "", "en")
+            res["social"] = {"youtube": yt}
         return res
 
     async def publish_to_social(self, video_path: str, topic: str,
