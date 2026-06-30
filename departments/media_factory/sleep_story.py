@@ -67,19 +67,20 @@ async def build_sleep_story(ask_llm, topic: str, output_path: str, target_minute
     if not script.strip():
         return None
 
-    # 2. TTS — ÖNCE XTTS-v2 (doğal, yerel), yoksa edge-tts fallback.
+    # 2. TTS — ÖNCE Kokoro (yerel, ÜCRETSİZ, TİCARİ, hızlı; EN). Sleep için yavaş (speed=0.9).
+    #    EN değilse/yoksa edge-tts fallback. (XTTS non-commercial → monetize içerikte kullanılmıyor.)
     voice_mp3 = os.path.join(workdir, "voice.mp3")
     tts_src = "edge-tts"
-    used_xtts = False
+    used_premium = False
     try:
-        from departments.media_factory import tts_engine as _xtts
-        if _xtts.is_available():
-            if _xtts.synth(script, voice_mp3, lang=lang):
-                used_xtts = True
-                tts_src = "xtts-v2"
+        from departments.media_factory import kokoro_engine as _kok
+        if lang in ("en", "en-us", "en-gb", "a", "b") and _kok.is_available():
+            if _kok.synth(script, voice_mp3, lang="en", voice="af_heart", speed=0.9):
+                used_premium = True
+                tts_src = "kokoro"
     except Exception:
         pass
-    if not used_xtts:
+    if not used_premium:
         import edge_tts
         paras = [p for p in script.split("\n\n") if p.strip()]
         audio_parts = []

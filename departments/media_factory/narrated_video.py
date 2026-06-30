@@ -80,12 +80,12 @@ Style: Hook,Arial,64,&H0000F2FF,&H00000000,&H78000000,1,1,5,3,2,120,120,440
 
 async def synth_voice_en(text: str, mp3_path: str, voice: str = "en-US-GuyNeural",
                          lang: str = "en", speaker_wav: str = "") -> bool:
-    """Seslendirme: ÖNCE XTTS-v2 (doğal, yerel, ses-klonlama), yoksa edge-tts fallback.
-    lang=en|tr. speaker_wav verilirse kullanıcının sesini klonlar."""
+    """Seslendirme: ÖNCE Kokoro (yerel, ÜCRETSİZ, TİCARİ; EN), yoksa edge-tts fallback.
+    lang=en|tr. (XTTS non-commercial → monetize içerikte kullanılmıyor.)"""
     try:
-        from departments.media_factory import tts_engine as _x
-        if _x.is_available():
-            if _x.synth(text, mp3_path, lang=lang, speaker_wav=speaker_wav):
+        from departments.media_factory import kokoro_engine as _kok
+        if lang in ("en", "en-us", "en-gb") and _kok.is_available():
+            if _kok.synth(text, mp3_path, lang="en", voice="af_heart"):
                 return True
     except Exception:
         pass
