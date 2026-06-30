@@ -63,7 +63,7 @@ def fetch_pexels_clips(keywords: List[str], out_dir: str, count: int = 8,
         try:
             url = ("https://api.pexels.com/videos/search?query=" + urllib.parse.quote(kw) +
                    f"&orientation={orient}&per_page={per_kw}&size=medium")
-            req = urllib.request.Request(url, headers={"Authorization": api_key})
+            req = urllib.request.Request(url, headers={"Authorization": api_key, "User-Agent": _UA})
             data = json.loads(urllib.request.urlopen(req, timeout=_TIMEOUT).read().decode())
             for vid in data.get("videos", []):
                 files = sorted([f for f in vid.get("video_files", []) if f.get("width")],
@@ -73,6 +73,39 @@ def fetch_pexels_clips(keywords: List[str], out_dir: str, count: int = 8,
                 link = files[0]["link"]
                 dst = os.path.join(out_dir, f"broll_{len(paths)}.mp4")
                 if _download(link, dst):
+                    paths.append(dst)
+                if len(paths) >= count:
+                    break
+        except Exception:
+            continue
+    return paths
+
+
+# ---------- Pixabay b-roll (Pexels yedeği/takviyesi) ----------
+def fetch_pixabay_clips(keywords: List[str], out_dir: str, count: int = 8,
+                        vertical: bool = False, api_key: str = "") -> List[str]:
+    """Pixabay ücretsiz stok video (Pexels yetmezse takviye)."""
+    api_key = api_key or os.getenv("PIXABAY_API_KEY", "").strip()
+    if not api_key:
+        return []
+    os.makedirs(out_dir, exist_ok=True)
+    paths: List[str] = []
+    per_kw = max(1, math.ceil(count / max(1, len(keywords))))
+    for kw in keywords:
+        if len(paths) >= count:
+            break
+        try:
+            url = ("https://pixabay.com/api/videos/?key=" + urllib.parse.quote(api_key) +
+                   "&q=" + urllib.parse.quote(kw) + f"&per_page={max(3, per_kw)}&safesearch=true")
+            req = urllib.request.Request(url, headers={"User-Agent": _UA})
+            data = json.loads(urllib.request.urlopen(req, timeout=_TIMEOUT).read().decode())
+            for hit in data.get("hits", []):
+                vids = hit.get("videos", {})
+                f = vids.get("large") or vids.get("medium") or vids.get("small")
+                if not f or not f.get("url"):
+                    continue
+                dst = os.path.join(out_dir, f"pixa_{len(paths)}.mp4")
+                if _download(f["url"], dst):
                     paths.append(dst)
                 if len(paths) >= count:
                     break
@@ -231,6 +264,10 @@ def assemble_rich(audio_path: str, output_path: str, keywords: List[str],
     W, H = (1080, 1920) if vertical else (1920, 1080)
     src = "pexels"
     clips = fetch_pexels_clips(keywords, os.path.join(work, "pexels"), count=10, vertical=vertical)
+    if len(clips) < 6:  # Pixabay ile takviye
+        more = fetch_pixabay_clips(keywords, os.path.join(work, "pixabay"), count=10 - len(clips), vertical=vertical)
+        if more:
+            clips += more; src = "pexels+pixabay" if clips else src
     if not clips:
         # key yok → Pollinations AI görsel → klip
         src = "pollinations"

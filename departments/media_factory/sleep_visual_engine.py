@@ -13,7 +13,8 @@ import math
 import subprocess
 from typing import List, Optional
 
-from departments.media_factory.broll_engine import fetch_pexels_clips, fetch_pollinations_images
+from departments.media_factory.broll_engine import (fetch_pexels_clips, fetch_pixabay_clips,
+                                                     fetch_pollinations_images)
 
 # Uyku-dostu sahne temaları (düşük uyarım, sıcak/sakin)
 SLEEP_THEMES = [
@@ -85,6 +86,9 @@ def build_cinematic_ambient(duration_sec: float, out_path: str, theme_keywords: 
     # 1. Kaynak: Pexels video (tercih) → yoksa AI görsel
     src = "pexels"
     clips = fetch_pexels_clips(themes, os.path.join(work, "pex_amb"), count=scenes, vertical=vertical)
+    if len(clips) < scenes:  # Pixabay takviye
+        clips += fetch_pixabay_clips(themes, os.path.join(work, "pixa_amb"),
+                                     count=scenes - len(clips), vertical=vertical)
     scene_files = []
     if clips:
         for i, c in enumerate(clips):
