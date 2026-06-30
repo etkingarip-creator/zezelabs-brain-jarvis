@@ -19,14 +19,15 @@ from typing import List, Dict, Optional
 
 
 class VoiceEngineer:
-    """Ses Mühendisi — repliği uygun motor+sesle seslendirir (XTTS doğal / edge hızlı)."""
+    """Ses Mühendisi — repliği uygun motor+sesle seslendirir (Kokoro doğal/ticari EN / edge hızlı TR)."""
     async def voice_line(self, text: str, out_wav: str, lang: str = "tr",
-                         engine: str = "xtts", speaker: str = "", pitch: str = "+0Hz") -> bool:
-        if engine == "xtts":
-            from departments.media_factory import tts_engine as x
-            if x.is_available() and x.synth(text, out_wav, lang=lang, speaker=speaker):
+                         engine: str = "kokoro", speaker: str = "", pitch: str = "+0Hz") -> bool:
+        if engine in ("kokoro", "xtts") and lang in ("en", "en-us", "en-gb"):
+            from departments.media_factory import kokoro_engine as kok
+            kv = speaker if speaker.startswith(("af_", "am_", "bf_", "bm_")) else "af_heart"
+            if kok.is_available() and kok.synth(text, out_wav, lang="en", voice=kv):
                 return True
-        try:  # edge fallback / hız
+        try:  # edge fallback / hız (TR dahil)
             import edge_tts
             v = speaker if (speaker and "Neural" in speaker) else ("tr-TR-EmelNeural" if lang == "tr" else "en-US-GuyNeural")
             await edge_tts.Communicate(text, v, pitch=pitch).save(out_wav)

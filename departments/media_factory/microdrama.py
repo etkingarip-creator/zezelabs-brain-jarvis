@@ -49,10 +49,11 @@ def assign_voices(characters: List[Dict], engine: str = "edge", lang: str = "tr"
 
 
 async def _synth_line(engine: str, text: str, out_wav: str, voice_spec, lang: str) -> bool:
-    """Bir repliği seslendir. engine='edge' (hızlı) | 'xtts' (premium/yavaş)."""
-    if engine == "xtts":
-        from departments.media_factory import tts_engine as xtts
-        return bool(xtts.synth(text, out_wav, lang=lang, speaker=voice_spec[0]))
+    """Bir repliği seslendir. engine='edge' (hızlı, TR) | 'kokoro' (premium yerel, EN ticari)."""
+    if engine in ("kokoro", "xtts") and lang in ("en", "en-us", "en-gb"):
+        from departments.media_factory import kokoro_engine as kok
+        if kok.is_available() and kok.synth(text, out_wav, lang="en", voice=voice_spec[0] if isinstance(voice_spec[0], str) and voice_spec[0].startswith(("af_", "am_", "bf_", "bm_")) else "af_heart"):
+            return True
     try:
         import edge_tts
         voice, pitch = voice_spec
