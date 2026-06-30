@@ -253,34 +253,25 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         out = _os.path.join(rep, f"sleep_{abs(hash(topic)) % 10000}.mp4")
 
         visuals = None
-        if reuse_visuals and _os.path.exists(_os.path.join(rep, "sl_concat.mp4")):
-            visuals = _os.path.join(rep, "sl_concat.mp4")  # mevcut görsel, GLM yok
-        elif with_visuals and self._video_pipeline:
-            # STORYBOARD → planlı atmosferik kareler (sahne tarifi yerine çekim planı)
-            scenes = None
+        if reuse_visuals and _os.path.exists(_os.path.join(rep, "sl_ambient.mp4")):
+            visuals = _os.path.join(rep, "sl_ambient.mp4")  # mevcut ambient montaj
+        elif with_visuals:
+            # ÜCRETSİZ sinematik ambient montaj: çok sahne + crossfade + koyu/sıcak grade + vignette.
+            # (GLM yerine — uzun uyku videosu için maliyet $0, sleep_story süreye döngüler.)
+            from departments.media_factory.sleep_visual_engine import build_cinematic_ambient, SLEEP_THEMES
+            amb_out = _os.path.join(rep, "sl_ambient.mp4")
+            # konuya göre tema seç (yoksa genel sakin temalar)
+            themes = None
             if self.crew:
                 sb = await self.crew.storyboard.draft(
-                    self.ask_llm, f"{topic} (sakin uyku belgeseli, atmosferik)",
-                    num_shots=scene_count, vertical=False, style="calm atmospheric documentary")
+                    self.ask_llm, f"{topic} (calm sleep ambience, atmospheric scenes)",
+                    num_shots=min(scene_count, 12), vertical=False, style="calm atmospheric cinematic")
                 if sb and sb.get("visual_prompts"):
-                    scenes = sb["visual_prompts"][:scene_count]
-            if not scenes:
-                scenes = [f"{topic}, cinematic atmospheric wide shot, calm, documentary"]
-            paths = [_os.path.join(rep, f"sl_sc{i}.mp4") for i in range(len(scenes))]
-
-            async def _g(pr, pa):
-                return await self._video_pipeline.generate(prompt=pr + ", cinematic, calm, slow, documentary",
-                                                           output_path=pa, width=1920, height=1080,
-                                                           duration_sec=5, model="glm-5.2")
-            await _aio.gather(*[_g(scenes[i], paths[i]) for i in range(len(scenes))], return_exceptions=True)
-            ok = [p for p in paths if _os.path.exists(p)]
-            if ok:
-                visuals = _os.path.join(rep, "sl_concat.mp4")
-                lst = _os.path.join(rep, "sl_list.txt")
-                with open(lst, "w") as f:
-                    f.write("".join(f"file '{p}'\n" for p in ok))
-                _sp.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", lst,
-                         "-c:v", "libx264", "-pix_fmt", "yuv420p", visuals], capture_output=True, timeout=120)
+                    themes = sb["visual_prompts"][:12]
+            amb = await _aio.to_thread(build_cinematic_ambient, target_minutes * 60, amb_out,
+                                       themes or SLEEP_THEMES, False, min(scene_count, 12), 150.0, 2.5, False)
+            if amb and amb.get("success"):
+                visuals = amb["path"]
 
         res = await build_sleep_story(self.ask_llm, topic, out, target_minutes=target_minutes,
                                       visuals_video=visuals, lang=lang, title=title,
