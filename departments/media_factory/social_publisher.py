@@ -45,8 +45,10 @@ def platform_configured(platform: str) -> Dict:
     return {"platform": p, "configured": False, "needs": "bilinmeyen platform"}
 
 
-def publish(platform: str, video_path: str, title: str, description: str, hashtags: list) -> Dict:
-    """Gerçek yayın (credential varsa). Yoksa dürüstçe 'credential gerekli' döner — SAHTE BAŞARI YOK."""
+def publish(platform: str, video_path: str, title: str, description: str, hashtags: list,
+            srt_path: str = "", caption_lang: str = "en") -> Dict:
+    """Gerçek yayın (credential varsa). Yoksa dürüstçe 'credential gerekli' döner — SAHTE BAŞARI YOK.
+    srt_path: uzun-form YouTube için soft caption (SEO+çeviri) olarak yüklenir."""
     cfg = platform_configured(platform)
     if not cfg["configured"]:
         return {"published": False, "platform": cfg["platform"], "reason": "credential_yok",
@@ -56,7 +58,8 @@ def publish(platform: str, video_path: str, title: str, description: str, hashta
     try:
         p = platform.lower()
         if p == "youtube":
-            return _youtube_upload(video_path, title, description, hashtags)
+            return _youtube_upload(video_path, title, description, hashtags,
+                                   srt_path=srt_path, caption_lang=caption_lang)
         if p == "tiktok":
             return _tiktok_upload(video_path, title, hashtags)
         if p in ("instagram", "ig"):
@@ -66,22 +69,40 @@ def publish(platform: str, video_path: str, title: str, description: str, hashta
     return {"published": False, "platform": platform, "reason": "desteklenmeyen"}
 
 
-def _youtube_upload(video_path: str, title: str, description: str, tags: list) -> Dict:
-    """YouTube Data API v3 resumable upload (OAuth2 token gerekli)."""
+_YT_SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
+              "https://www.googleapis.com/auth/youtube.force-ssl"]  # force-ssl = caption upload
+
+
+def _youtube_upload(video_path: str, title: str, description: str, tags: list,
+                    srt_path: str = "", caption_lang: str = "en") -> Dict:
+    """YouTube Data API v3 resumable upload + (varsa) SRT soft-caption yükle (SEO+çeviri)."""
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
     from google.oauth2.credentials import Credentials
     creds = Credentials.from_authorized_user_file(
-        os.getenv("YOUTUBE_TOKEN_PATH", "youtube_token.json"),
-        ["https://www.googleapis.com/auth/youtube.upload"])
+        os.getenv("YOUTUBE_TOKEN_PATH", "youtube_token.json"), _YT_SCOPES)
     yt = build("youtube", "v3", credentials=creds)
     body = {"snippet": {"title": title[:100], "description": description[:4900], "tags": tags[:15]},
             "status": {"privacyStatus": os.getenv("YT_PRIVACY", "private")}}
     req = yt.videos().insert(part="snippet,status", body=body,
                             media_body=MediaFileUpload(video_path, resumable=True))
     resp = req.execute()
-    return {"published": True, "platform": "youtube", "video_id": resp.get("id"),
-            "url": f"https://youtu.be/{resp.get('id')}"}
+    vid = resp.get("id")
+    result = {"published": True, "platform": "youtube", "video_id": vid,
+              "url": f"https://youtu.be/{vid}"}
+    # Soft caption (uzun-form YouTube: SEO + otomatik çeviri). Hata kritik değil.
+    if srt_path and os.path.exists(srt_path):
+        try:
+            yt.captions().insert(
+                part="snippet",
+                body={"snippet": {"videoId": vid, "language": caption_lang,
+                                  "name": "Auto", "isDraft": False}},
+                media_body=MediaFileUpload(srt_path)).execute()
+            result["caption_uploaded"] = True
+        except Exception as e:
+            result["caption_uploaded"] = False
+            result["caption_error"] = str(e)[:120]
+    return result
 
 
 def _tiktok_upload(video_path: str, title: str, tags: list) -> Dict:

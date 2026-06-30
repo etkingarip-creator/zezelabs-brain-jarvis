@@ -99,30 +99,86 @@ def fetch_pollinations_images(prompts: List[str], out_dir: str, vertical: bool =
 
 
 # ---------- Whisper altyazı ----------
-def transcribe_to_ass(audio_path: str, ass_path: str, vertical: bool = False,
-                      max_words: int = 6) -> bool:
-    """faster-whisper ile transkribe → animasyonlu ASS altyazı (kelime grupları)."""
+def _transcribe(audio_path: str):
+    """faster-whisper transkripsiyon → segment listesi (word_timestamps). CUDA→CPU düş."""
     try:
         from faster_whisper import WhisperModel
     except Exception:
+        return None
+    for dev, ct in [("cuda", "float16"), ("cpu", "int8")]:
+        try:
+            model = WhisperModel("base", device=dev, compute_type=ct)
+            segs, _ = model.transcribe(audio_path, word_timestamps=True, vad_filter=True)
+            return list(segs)  # cublas hatası burada patlar → CPU'ya düşer
+        except Exception:
+            continue
+    return None
+
+
+def _srt_time(sec: float) -> str:
+    h = int(sec // 3600); m = int((sec % 3600) // 60); s = int(sec % 60); ms = int((sec - int(sec)) * 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def write_srt(segments, srt_path: str) -> bool:
+    """Segment-bazlı SRT (YouTube'a soft caption olarak yüklenir — SEO + çeviri)."""
+    if not segments:
         return False
     try:
-        model = WhisperModel("base", device="cuda", compute_type="float16")
+        out = []
+        for i, seg in enumerate(segments, 1):
+            txt = (getattr(seg, "text", "") or "").strip()
+            if not txt:
+                continue
+            out.append(str(i))
+            out.append(f"{_srt_time(seg.start)} --> {_srt_time(seg.end)}")
+            out.append(txt)
+            out.append("")
+        with open(srt_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(out))
+        return True
     except Exception:
-        try:
-            model = WhisperModel("base", device="cpu", compute_type="int8")
-        except Exception:
-            return False
+        return False
+
+
+def make_captions(audio_path: str, ass_path: Optional[str] = None,
+                  srt_path: Optional[str] = None, vertical: bool = False,
+                  max_words: int = 6) -> Dict:
+    """Tek transkripsiyon → istenen formatlar. ass=dikey yakılı, srt=uzun-form YouTube soft."""
+    segments = _transcribe(audio_path)
+    if not segments:
+        return {"ass": False, "srt": False}
+    res = {"ass": False, "srt": False}
+    if srt_path:
+        res["srt"] = write_srt(segments, srt_path)
+    if ass_path:
+        res["ass"] = _write_ass(segments, ass_path, vertical=vertical, max_words=max_words)
+    return res
+
+
+def transcribe_to_ass(audio_path: str, ass_path: str, vertical: bool = False,
+                      max_words: int = 6) -> bool:
+    """Geriye-uyumluluk: tek seferde transkribe + ASS yaz."""
+    segments = _transcribe(audio_path)
+    if not segments:
+        return False
+    return _write_ass(segments, ass_path, vertical=vertical, max_words=max_words)
+
+
+def _write_ass(segments, ass_path: str, vertical: bool = False, max_words: int = 6) -> bool:
+    """Animasyonlu ASS altyazı (kelime grupları, metin hiyerarşisi)."""
     try:
-        segments, _ = model.transcribe(audio_path, word_timestamps=True, vad_filter=True)
         play_w, play_h = (1080, 1920) if vertical else (1920, 1080)
-        fs = 64 if vertical else 52
-        margin_v = 320 if vertical else 90
+        # Metin hiyerarşisi: büyük, kalın, güçlü stroke+gölge, alt-üçlük konumu (okunur + dikkat çeker)
+        fs = 74 if vertical else 60
+        margin_v = 360 if vertical else 130
         lines = [
-            "[Script Info]", "ScriptType: v4.00+", f"PlayResX: {play_w}", f"PlayResY: {play_h}", "",
+            "[Script Info]", "ScriptType: v4.00+", f"PlayResX: {play_w}", f"PlayResY: {play_h}",
+            "WrapStyle: 2", "",
             "[V4+ Styles]",
-            "Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,Bold,Italic,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
-            f"Style: Cap,Arial Black,{fs},&H00FFFFFF,&H00000000,&H80000000,1,0,1,4,2,2,60,60,{margin_v},1",
+            "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding",
+            # PrimaryColour beyaz, Outline siyah kalın(5), Shadow(3). Alignment 2 = alt-orta.
+            f"Style: Cap,Arial Black,{fs},&H00FFFFFF,&H0000FFFF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,5,3,2,80,80,{margin_v},1",
             "", "[Events]",
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text",
         ]
@@ -165,8 +221,11 @@ def _image_to_clip(img: str, out: str, sec: float, W: int, H: int) -> Optional[s
 
 def assemble_rich(audio_path: str, output_path: str, keywords: List[str],
                   image_prompts: Optional[List[str]] = None, title: str = "",
-                  vertical: bool = False, captions: bool = True) -> Dict:
-    """Tam zengin montaj: b-roll (Pexels) veya AI görsel (Pollinations) + Whisper altyazı + ses."""
+                  vertical: bool = False, captions: bool = True,
+                  burn_captions: Optional[bool] = None) -> Dict:
+    """Tam zengin montaj: b-roll/AI görsel + Whisper altyazı + ses.
+    burn_captions: None→dikeyde yak, uzun-formda yakma (SRT üret). Açık verilirse onu uygular.
+    Uzun-form için SRT döner (YouTube'a soft caption yüklenir → SEO+çeviri)."""
     work = os.path.dirname(output_path)
     os.makedirs(work, exist_ok=True)
     W, H = (1080, 1920) if vertical else (1920, 1080)
@@ -184,15 +243,20 @@ def assemble_rich(audio_path: str, output_path: str, keywords: List[str],
                 clips.append(c)
     if not clips:
         return {"success": False, "error": "ne Pexels ne Pollinations görsel alınamadı", "source": src}
+    if burn_captions is None:
+        burn_captions = vertical  # dikey=yak, uzun-form=yakma (soft SRT)
     ass = None
+    srt = None
     if captions:
-        ass = os.path.join(work, "captions.ass")
-        if not transcribe_to_ass(audio_path, ass, vertical=vertical):
-            ass = None
+        ass_target = os.path.join(work, "captions.ass") if burn_captions else None
+        srt_target = os.path.join(work, "captions.srt")  # her zaman üret (YouTube soft upload)
+        cap = make_captions(audio_path, ass_path=ass_target, srt_path=srt_target, vertical=vertical)
+        ass = ass_target if cap.get("ass") else None
+        srt = srt_target if cap.get("srt") else None
     out = build_broll_video(audio_path, output_path, clips, title=title, ass_path=ass, vertical=vertical)
     if out:
         return {"success": True, "path": out, "visual_source": src,
-                "captions": bool(ass), "clip_count": len(clips)}
+                "burned_captions": bool(ass), "srt_path": srt, "clip_count": len(clips)}
     return {"success": False, "error": "montaj başarısız", "source": src}
 
 
@@ -233,12 +297,15 @@ def build_broll_video(audio_path: str, output_path: str, clips: List[str],
     # 3. Altyazı + başlık yak, NotebookLM sesini bindir
     vf_parts = []
     if ass_path and os.path.exists(ass_path):
-        vf_parts.append("subtitles='" + ass_path.replace("\\", "/").replace(":", "\\:") + "'")
+        ap = ass_path.replace("\\", "/").replace(":", "\\:")
+        vf_parts.append(f"subtitles='{ap}':fontsdir='C\\:/Windows/Fonts'")
     if title:
         safe = title.replace("'", "").replace(":", " -")
         y = 150 if vertical else 90
-        vf_parts.append(f"drawtext=text='{safe}':fontcolor=white:fontsize={56 if not vertical else 60}:"
-                        f"x=(w-text_w)/2:y={y}:box=1:boxcolor=black@0.55:boxborderw=18:enable='lt(t,6)'")
+        ff = "C\\:/Windows/Fonts/arialbd.ttf"  # Windows fontconfig yok → açık font dosyası şart
+        vf_parts.append(f"drawtext=fontfile='{ff}':text='{safe}':fontcolor=white:"
+                        f"fontsize={56 if not vertical else 60}:x=(w-text_w)/2:y={y}:"
+                        f"box=1:boxcolor=black@0.55:boxborderw=18:enable='lt(t,6)'")
     vf = ",".join(vf_parts) if vf_parts else "null"
     cmd = ["ffmpeg", "-y", "-i", bg, "-i", audio_path,
            "-vf", vf, "-map", "0:v", "-map", "1:a",

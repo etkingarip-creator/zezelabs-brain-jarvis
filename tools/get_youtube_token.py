@@ -8,7 +8,8 @@ Sonuç: youtube_token.json (social_publisher bunu kullanır) + .env'e YOUTUBE_OA
 import os
 import sys
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
+          "https://www.googleapis.com/auth/youtube.force-ssl"]  # force-ssl = altyazı (caption) yükleme
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENT = os.path.join(ROOT, "client_secret.json")
 TOKEN = os.path.join(ROOT, "youtube_token.json")
