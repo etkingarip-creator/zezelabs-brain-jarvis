@@ -147,9 +147,20 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         intro = _os.path.join(rep, f"{base}_map.mp4")
         mi = await _aio.to_thread(build_map_intro, destination, intro, vertical, 7.0)
         intro_clip = mi.get("path") if mi and mi.get("success") else None
-        # 3. Eşleşen gerçek stok footage + montaj (dikey=yakılı altyazı) + harita girişi
+        # 3. Eşleşen gerçek stok footage + montaj. GÜVEN-KRİTİK: her aramaya ŞEHİR ADI zorla
+        # (yoksa 'temple' → Efes gibi yanlış konum karışır). Şehir adı içermeyen sorguya prefix ekle.
+        city = destination.split(",")[0].strip()
+        kws = []
+        for k in sc["stock_keywords"]:
+            k = (k or "").strip()
+            if k and city.lower() not in k.lower():
+                k = f"{city} {k}"
+            if k:
+                kws.append(k)
+        # her sorguya destinasyon garantili → yanlış konum riski minimum
+        kws = kws or [f"{city} landmark", f"{city} aerial", f"{city} street", f"{city} nature"]
         out = _os.path.join(rep, f"{base}.mp4")
-        res = await _aio.to_thread(assemble_rich, audio, out, sc["stock_keywords"], None,
+        res = await _aio.to_thread(assemble_rich, audio, out, kws, None,
                                    sc.get("thumbnail_hook", destination), vertical, True, None, intro_clip)
         if not res.get("success"):
             return {"success": False, "stage": "montaj", **res}
@@ -1191,9 +1202,17 @@ class MediaFactoryAgent(BaseDepartmentAgent):
 
 
     async def execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-        # OTONOM MOD SEÇİMİ: departman görevden 3 formattan birini kendi seçer ve üretir.
+        # OTONOM MOD SEÇİMİ: departman görevden formatı kendi seçer ve UÇTAN UCA üretir.
         desc = (task_data.get("description", "") + " " + task_data.get("task_type", "")).lower()
         topic = task_data.get("description", "") or "medya içeriği"
+
+        # Mod 0 — TRAVEL SHORTS (çekirdek niş): harita girişi + 4 kategori + sıfır-tekrar footage +
+        # gür ses + kapak + travel-SEO. "travel/seyahat/gezi/destinasyon/<yer> gezisi" → tam otomatik.
+        if any(k in desc for k in ["travel", "seyahat", "gezi", "destinasyon", "destination", "trip", "gez "]):
+            dest = task_data.get("destination") or task_data.get("description", "").strip() or topic
+            return await self.produce_travel_short(
+                dest, vertical=not any(k in desc for k in ["uzun", "yatay", "long", "landscape"]),
+                publish=bool(task_data.get("publish", False)))
 
         # Mod 2 — Uyku hikayesi (tarih/gizem, uzun)
         if any(k in desc for k in ["uyku", "sleep", "uykuda", "dinlen", "hikaye anlat", "bedtime",

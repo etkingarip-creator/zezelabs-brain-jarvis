@@ -298,11 +298,16 @@ def assemble_rich(audio_path: str, output_path: str, keywords: List[str],
     os.makedirs(work, exist_ok=True)
     W, H = (1080, 1920) if vertical else (1920, 1080)
     src = "pexels"
-    clips = fetch_pexels_clips(keywords, os.path.join(work, "pexels"), count=10, vertical=vertical)
-    if len(clips) < 6:  # Pixabay ile takviye
-        more = fetch_pixabay_clips(keywords, os.path.join(work, "pixabay"), count=10 - len(clips), vertical=vertical)
-        if more:
-            clips += more; src = "pexels+pixabay" if clips else src
+    # SIFIR TEKRAR için bol benzersiz klip (süreyi döngüsüz doldurmak). Pexels + Pixabay birleşik.
+    clips = fetch_pexels_clips(keywords, os.path.join(work, "pexels"), count=18, vertical=vertical)
+    more = fetch_pixabay_clips(keywords, os.path.join(work, "pixabay"), count=18, vertical=vertical)
+    if more:
+        # tekrarı önle: dosya-boyutuna göre yaklaşık benzersizleştir + birleştir
+        seen_sizes = {os.path.getsize(c) for c in clips if os.path.exists(c)}
+        for m in more:
+            if os.path.exists(m) and os.path.getsize(m) not in seen_sizes:
+                clips.append(m); seen_sizes.add(os.path.getsize(m))
+        src = "pexels+pixabay"
     if not clips:
         # GERÇEK VİDEO yok → statik AI görsel "ilkokul seviyesi", kullanıcı istemiyor → dürüstçe başarısız.
         return {"success": False, "source": src,
@@ -362,37 +367,22 @@ def build_broll_video(audio_path: str, output_path: str, clips: List[str],
             cur, off = nx, off + (slen - xf)
         return cur
 
-    # 1. GÖVDE sahneleri (grade'li) → crossfade base
+    # HER KLİP BİR KEZ — SIFIR TEKRAR. Sahne süresi = süre / benzersiz klip sayısı (döngü YOK).
+    # İntro varsa gövdenin dolduracağı süre azalır → sahne süresini ona göre hesapla.
+    intro_dur = min(_ffprobe_duration(intro_clip), 8.0) if (intro_clip and os.path.exists(intro_clip)) else 0.0
+    fill = max(1.0, dur - intro_dur)
+    n = len(clips)
+    scene_sec = max(3.0, (fill + (n - 1) * 0.6) / n)  # xfade örtüşme telafisi
     norm = [r for i, c in enumerate(clips) if (r := _norm(c, os.path.join(work, f"norm_{i}.mp4"), scene_sec))]
     if not norm:
         return None
-    base = _xfade(norm, os.path.join(work, "body_base.mp4"), 0.8, scene_sec)
-
-    # 2. HİBRİT: HOOK (0-~12s hızlı kesim, enerjik) + GÖVDE (sakin crossfade, süreye döngü)
-    hook_sec = 2.4
-    hook_dur = min(12.0, dur * 0.18)
-    hooks = [r for i in range(max(1, int(hook_dur / hook_sec)))
-             if (r := _norm(clips[i % len(clips)], os.path.join(work, f"hook_{i}.mp4"), hook_sec))]
-    hook_mp4 = os.path.join(work, "hook.mp4")
-    if hooks:
-        hl = os.path.join(work, "hooklist.txt")
-        with open(hl, "w", encoding="utf-8") as f:
-            f.write("".join(f"file '{os.path.abspath(h)}'\n" for h in hooks))
-        subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", hl, "-c", "copy", hook_mp4],
-                       capture_output=True, timeout=120)
-    hook_real = hook_sec * len(hooks)
-    body = os.path.join(work, "body.mp4")
-    subprocess.run(["ffmpeg", "-y", "-stream_loop", "-1", "-i", base, "-t", str(max(1.0, dur - hook_real)),
-                    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", body],
-                   capture_output=True, timeout=900)
+    stitched = _xfade(norm, os.path.join(work, "stitched.mp4"), 0.6, scene_sec)
     bg = os.path.join(work, "broll_bg.mp4")
-    if os.path.exists(hook_mp4) and os.path.exists(body) and hook_real > 1:
-        fc = f"[0:v][1:v]xfade=transition=fade:duration=0.6:offset={max(0.1, hook_real - 0.6)}[v]"
-        subprocess.run(["ffmpeg", "-y", "-i", hook_mp4, "-i", body, "-filter_complex", fc, "-map", "[v]",
-                        "-t", str(dur), "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", bg],
-                       capture_output=True, timeout=1200)
-    if not os.path.exists(bg) and os.path.exists(body):
-        subprocess.run(["ffmpeg", "-y", "-i", body, "-t", str(dur), "-c", "copy", bg], capture_output=True, timeout=300)
+    # tam süreye trim (fazla varsa kes) — her klip yine bir kez, tekrar YOK
+    subprocess.run(["ffmpeg", "-y", "-i", stitched, "-t", str(fill), "-c:v", "libx264",
+                    "-preset", "veryfast", "-pix_fmt", "yuv420p", bg], capture_output=True, timeout=600)
+    if not os.path.exists(bg):
+        bg = stitched
     if not os.path.exists(bg):
         return None
     # 2.5 Harita girişi (varsa) → bg'nin başına ekle, toplam = ses uzunluğu (anlatım intro üstünde çalar)

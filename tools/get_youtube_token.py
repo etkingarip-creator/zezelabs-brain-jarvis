@@ -12,7 +12,9 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
           "https://www.googleapis.com/auth/youtube.force-ssl"]  # force-ssl = altyazı (caption) yükleme
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENT = os.path.join(ROOT, "client_secret.json")
-TOKEN = os.path.join(ROOT, "youtube_token.json")
+# Çok-kanal: `python tools/get_youtube_token.py travel` → youtube_token_travel.json
+_CH = sys.argv[1].strip() if len(sys.argv) > 1 else ""
+TOKEN = os.path.join(ROOT, f"youtube_token_{_CH}.json" if _CH else "youtube_token.json")
 
 
 def main():
