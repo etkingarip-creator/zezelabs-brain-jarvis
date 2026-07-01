@@ -380,12 +380,15 @@ def build_broll_video(audio_path: str, output_path: str, clips: List[str],
     # İntro varsa gövdenin dolduracağı süre azalır → sahne süresini ona göre hesapla.
     intro_dur = min(_ffprobe_duration(intro_clip), 8.0) if (intro_clip and os.path.exists(intro_clip)) else 0.0
     fill = max(1.0, dur - intro_dur)
-    n = len(clips)
-    scene_sec = max(3.0, (fill + (n - 1) * 0.6) / n)  # xfade örtüşme telafisi
-    norm = [r for i, c in enumerate(clips) if (r := _norm(c, os.path.join(work, f"norm_{i}.mp4"), scene_sec))]
+    # Sahne ~4.5sn olacak kadar klip KULLAN (fazlasını kullanma) → temiz geçiş, hayalet yok, sıfır tekrar.
+    xf = 0.35
+    n = max(6, min(len(clips), round(fill / 4.5)))
+    use = clips[:n]
+    scene_sec = max(3.8, (fill + (n - 1) * xf) / n)
+    norm = [r for i, c in enumerate(use) if (r := _norm(c, os.path.join(work, f"norm_{i}.mp4"), scene_sec))]
     if not norm:
         return None
-    stitched = _xfade(norm, os.path.join(work, "stitched.mp4"), 0.6, scene_sec)
+    stitched = _xfade(norm, os.path.join(work, "stitched.mp4"), xf, scene_sec)
     bg = os.path.join(work, "broll_bg.mp4")
     # tam süreye trim (fazla varsa kes) — her klip yine bir kez, tekrar YOK
     subprocess.run(["ffmpeg", "-y", "-i", stitched, "-t", str(fill), "-c:v", "libx264",
