@@ -11,7 +11,29 @@ DİKKAT: Google anti-bot + ToS riski (kullanıcı kabul etti). Kırılırsa sele
 from __future__ import annotations
 import os
 import time
+import subprocess
 from typing import Dict
+
+# Prompt'lara eklenen "ölü bölge" direktifi: köşeleri boş bırak → logo kırpınca içerik kaybı olmaz.
+DEADZONE_HINT = (" IMPORTANT: keep the outer 8% edges and all four corners empty/unimportant "
+                 "(negative space), place the main subject and action safely in the center frame.")
+
+
+def _strip_watermark(video_in: str, video_out: str, W: int = 1920, H: int = 1080) -> str:
+    """Gemini/Veo logosunu (sağ-alt sabit ✦) delogo ile inpaint eder — KIRPMA/ZOOM/KAYIP YOK.
+    Önce 1280x720'e sabitler (logo konumu tutarlı olsun), delogo uygular, sonra çıkışa ölçekler."""
+    try:
+        # 1280x720 tabanında sağ-alt logo kutusu (delogo çevre pikselden inpaint eder, biraz geniş güvenli)
+        vf = ("scale=1280:720:flags=lanczos,setsar=1,"
+              "delogo=x=1058:y=578:w=182:h=132,"
+              f"scale={W}:{H}:flags=lanczos")
+        # ses varsa aktar, yoksa sorun olmasın (-c:a copy ses yoksa hata verir) → ses akışını opsiyonel yap
+        subprocess.run(["ffmpeg", "-y", "-i", video_in, "-vf", vf, "-c:v", "libx264",
+                        "-preset", "veryfast", "-pix_fmt", "yuv420p", video_out],
+                       capture_output=True, timeout=300)
+        return video_out if os.path.exists(video_out) and os.path.getsize(video_out) > 5000 else video_in
+    except Exception:
+        return video_in
 
 from departments.media_factory.notebooklm_browser import _launch, _click_first  # aynı Google profili
 
@@ -133,10 +155,18 @@ def _generate(prompt: str, tool_label: str, out_path: str, kind: str,
             ctx.close()
 
 
-def create_video(prompt: str, out_path: str = "", headless: bool = True, wait_min: int = 8) -> Dict:
-    """Veo ile gerçek AI video (ticari, filigransız). Gemini Pro günlük ~5 kota."""
+def create_video(prompt: str, out_path: str = "", headless: bool = True, wait_min: int = 8,
+                 strip_logo: bool = True) -> Dict:
+    """Veo ile gerçek AI video (ticari). prompt'a ölü-bölge eklenir; indirince logo kenar-kırpılır.
+    Gemini Pro günlük ~5 kota. NOT: gerçekçi insan/sunucu reddedilir (sahne/b-roll üretir)."""
     out_path = out_path or os.path.join(OUT_DIR, f"veo_{int(time.time())}.mp4")
-    return _generate(prompt, "Video oluştur", out_path, "video", wait_min, headless)
+    res = _generate(prompt + DEADZONE_HINT, "Video oluştur", out_path, "video", wait_min, headless)
+    if res.get("success") and strip_logo:
+        cleaned = out_path.replace(".mp4", "_clean.mp4")
+        c = _strip_watermark(res["path"], cleaned)
+        res["path"] = c
+        res["logo_stripped"] = (c != res["path"] or c.endswith("_clean.mp4"))
+    return res
 
 
 def create_image(prompt: str, out_path: str = "", headless: bool = True, wait_min: int = 4) -> Dict:

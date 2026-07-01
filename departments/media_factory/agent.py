@@ -124,6 +124,53 @@ class MediaFactoryAgent(BaseDepartmentAgent):
             res["social"] = {"youtube": yt}
         return res
 
+    async def produce_travel_short(self, destination: str, vertical: bool = True,
+                                   publish: bool = False) -> Dict[str, Any]:
+        """Travel short: destinasyon → script → Kokoro ses → eşleşen gerçek stok footage →
+        yakılı altyazı + kapak + travel-affiliate SEO. Tamamen $0 + otomatik."""
+        import os as _os, asyncio as _aio
+        from departments.media_factory import travel, kokoro_engine, seo_metadata
+        from departments.media_factory.broll_engine import assemble_rich, fetch_pexels_photos
+        from departments.media_factory import thumbnail_engine as thumb
+        rep = _os.path.join(self.workspace_root, "departments", self.department, "reports", "travel")
+        _os.makedirs(rep, exist_ok=True)
+        base = destination.split(",")[0].strip().replace(" ", "_")
+
+        # 1. Script (hook + highlights + stok anahtarları)
+        sc = await travel.generate_travel_script(self.ask_llm, destination, lang="en")
+        # 2. Ses (Kokoro, EN)
+        audio = _os.path.join(rep, f"{base}.mp3")
+        if not await _aio.to_thread(kokoro_engine.synth, sc["narration"], audio, "en", "af_heart", 1.0):
+            return {"success": False, "error": "Kokoro ses üretilemedi (server 8003?)"}
+        # 3. Eşleşen gerçek stok footage + montaj (dikey=yakılı altyazı)
+        out = _os.path.join(rep, f"{base}.mp4")
+        res = await _aio.to_thread(assemble_rich, audio, out, sc["stock_keywords"], None,
+                                   sc.get("thumbnail_hook", destination), vertical, True)
+        if not res.get("success"):
+            return {"success": False, "stage": "montaj", **res}
+        # 4. Kapak (destinasyon fotoğrafı + hook)
+        photos = await _aio.to_thread(fetch_pexels_photos, [f"{destination} landmark scenic"],
+                                      _os.path.join(rep, "thumb"), 1, vertical)
+        if photos:
+            thumb_out = _os.path.join(rep, f"{base}_thumb.jpg")
+            await _aio.to_thread(thumb.make_thumbnail_split, photos[0], sc.get("hook", destination),
+                                 thumb_out, "TRAVEL", sc.get("thumbnail_hook", ""),
+                                 (255, 215, 0), "right", vertical)
+            res["thumbnail"] = thumb_out
+        # 5. SEO + travel affiliate açıklama
+        meta = await seo_metadata.build_metadata_package(
+            self.ask_llm, f"{destination} travel guide", [destination],
+            travel.TRAVEL_AFFILIATES, avatar="traveler")
+        res["metadata"] = meta
+        res["title"] = sc.get("title") or meta.get("title")
+        if publish:
+            from departments.media_factory import social_publisher as sp
+            res["social"] = {"youtube": await _aio.to_thread(
+                sp.publish, "youtube", res["path"], res["title"],
+                meta.get("description", ""), meta.get("tags", []),
+                res.get("srt_path", "") or "", "en")}
+        return res
+
     async def publish_to_social(self, video_path: str, topic: str,
                                 platforms: List[str] = None, lang: str = "tr") -> Dict[str, Any]:
         """Sosyal Medya Uzmanı: her platform için özel paket üret + yayınla (credential varsa).
