@@ -399,14 +399,15 @@ class JarvisZOMCore:
                 target_dept = intent_data.get("department")
                 pipeline = intent_data.get("pipeline") or []
 
-                # Rule-based fallback/override
+                # DETERMİNİSTİK ROUTER OTORİTE: güçlü keyword eşleşmesi varsa LLM'in departman
+                # seçimini EZER (LLM 'seyahat short'u zeze_design'a atıyordu). Tek kaynak: routing.route.
                 rule_dept, is_direct_match = self._route_to_department(message)
-                if rule_dept and is_direct_match and intent == "CHAT":
-                    action_keywords = ["görev", "rapor", "kontrol", "yaz", "sorgula", "bakiye", "cüzdan", "analiz", "durum", "ne oldu", "listele", "hesapla"]
-                    if any(kw in message.lower() for kw in action_keywords):
+                if rule_dept and is_direct_match:
+                    if target_dept != rule_dept:
+                        logger.info(f"Deterministik routing EZDİ: LLM='{target_dept}' → '{rule_dept}' ('{message[:40]}')")
+                    target_dept = rule_dept
+                    if intent == "CHAT":
                         intent = "TASK"
-                        target_dept = rule_dept
-                        logger.info(f"Rule-based intent override: TASK allocated to '{target_dept}' for query: '{message}'")
 
                 # IntelligentRouter ile işbirliği tespiti
                 if intent == "TASK" and target_dept:
