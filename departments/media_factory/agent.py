@@ -148,14 +148,21 @@ class MediaFactoryAgent(BaseDepartmentAgent):
                                    sc.get("thumbnail_hook", destination), vertical, True)
         if not res.get("success"):
             return {"success": False, "stage": "montaj", **res}
-        # 4. Kapak (destinasyon fotoğrafı + hook)
-        photos = await _aio.to_thread(fetch_pexels_photos, [f"{destination} landmark scenic"],
-                                      _os.path.join(rep, "thumb"), 1, vertical)
+        # 4. Kapak — KISA hook (uzun cümle DEĞİL). Dikey→tam-ekran; yatay→split.
+        city = destination.split(",")[0].strip()
+        hook_short = (sc.get("thumbnail_hook") or city).upper()[:22]  # 2-4 kelime
+        accent = hook_short.split()[-1] if hook_short.split() else city.upper()
+        photos = await _aio.to_thread(fetch_pexels_photos,
+                                      [f"{city} hot air balloons sunrise", f"{destination} iconic aerial scenic"],
+                                      _os.path.join(rep, "thumb"), 2, vertical)
         if photos:
             thumb_out = _os.path.join(rep, f"{base}_thumb.jpg")
-            await _aio.to_thread(thumb.make_thumbnail_split, photos[0], sc.get("hook", destination),
-                                 thumb_out, "TRAVEL", sc.get("thumbnail_hook", ""),
-                                 (255, 215, 0), "right", vertical)
+            if vertical:
+                await _aio.to_thread(thumb.make_thumbnail, photos[0], hook_short, thumb_out,
+                                     "TRAVEL", accent, (255, 215, 0), True)  # tam-ekran + alt metin
+            else:
+                await _aio.to_thread(thumb.make_thumbnail_split, photos[0], hook_short, thumb_out,
+                                     "TRAVEL", accent, (255, 215, 0), "right", False)
             res["thumbnail"] = thumb_out
         # 5. SEO + travel affiliate açıklama
         meta = await seo_metadata.build_metadata_package(

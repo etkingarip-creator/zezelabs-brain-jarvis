@@ -235,9 +235,11 @@ def _write_ass(segments, ass_path: str, vertical: bool = False, max_words: int =
     """Animasyonlu ASS altyazı (kelime grupları, metin hiyerarşisi)."""
     try:
         play_w, play_h = (1080, 1920) if vertical else (1920, 1080)
-        # Metin hiyerarşisi: büyük, kalın, güçlü stroke+gölge, alt-üçlük konumu (okunur + dikkat çeker)
-        fs = 74 if vertical else 60
-        margin_v = 360 if vertical else 130
+        # Metin hiyerarşisi: kalın, güçlü stroke+gölge, alt-üçlük. Dikeyde daha küçük + az kelime (taşmasın).
+        fs = 56 if vertical else 60
+        margin_v = 380 if vertical else 130
+        if vertical:
+            max_words = min(max_words, 4)  # dikeyde satır dar → 4 kelime sığar
         lines = [
             "[Script Info]", "ScriptType: v4.00+", f"PlayResX: {play_w}", f"PlayResY: {play_h}",
             "WrapStyle: 2", "",

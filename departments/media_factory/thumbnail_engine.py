@@ -88,11 +88,18 @@ def make_thumbnail(bg_image: str, hook: str, out_path: str,
     # --- ANA HOOK: glow + 3D gölge + stroke, vurgu kelime renkli + alt çizgi ---
     size = int(H * 0.185) if not vertical else int(H * 0.115)
     max_w = W - margin * 2
-    font = _font(size)
+    _d = ImageDraw.Draw(bg)
     words = hook.upper().split()
-    lines = _wrap(ImageDraw.Draw(bg), words, font, max_w)
-    while len(lines) > (3 if not vertical else 5) and size > 30:
-        size -= 6; font = _font(size); lines = _wrap(ImageDraw.Draw(bg), words, font, max_w)
+
+    def _fit(sz):
+        f = _font(sz)
+        ls = _wrap(_d, words, f, max_w)
+        widest = max((_d.textlength(" ".join(l), font=f) for l in ls), default=0)
+        return f, ls, widest
+    font, lines, widest = _fit(size)
+    # Satır sayısı VEYA genişlik taşarsa küçült (tek kelime bile sığsın → kesik yok)
+    while (len(lines) > (3 if not vertical else 5) or widest > max_w) and size > 26:
+        size -= 6; font, lines, widest = _fit(size)
     line_h = int(size * 1.05)
     total_h = line_h * len(lines)
     y0 = H - margin - total_h - int(H * 0.02)
@@ -198,11 +205,16 @@ def make_thumbnail_split(photo: str, hook: str, out_path: str, kicker: str = "",
         draw.text((text_x + pad, margin + pad // 2), kicker.upper(), font=kf, fill=(8, 8, 8))
 
     size = int(H * 0.16) if not vertical else int(H * 0.105)
-    font = _font(size)
     words = hook.upper().split()
-    lines = _wrap(draw, words, font, text_w)
-    while len(lines) > 4 and size > 28:
-        size -= 6; font = _font(size); lines = _wrap(draw, words, font, text_w)
+
+    def _fit2(sz):
+        f = _font(sz)
+        ls = _wrap(draw, words, f, text_w)
+        widest = max((draw.textlength(" ".join(l), font=f) for l in ls), default=0)
+        return f, ls, widest
+    font, lines, widest = _fit2(size)
+    while (len(lines) > 4 or widest > text_w) and size > 26:
+        size -= 6; font, lines, widest = _fit2(size)
     line_h = int(size * 1.06)
     y = H - margin - line_h * len(lines) - int(H * 0.03)
     stroke = max(5, size // 11)
