@@ -50,8 +50,18 @@ async def generate_travel_script(ask_llm, destination: str, lang: str = "en",
     d.setdefault("hook", f"{destination}: the trip you can't miss")
     d.setdefault("title", f"{destination} — Top Places You Must See")
     d.setdefault("thumbnail_hook", destination.split(",")[0][:20])
-    d.setdefault("narration", d.get("hook", ""))
     d.setdefault("categories", d.get("highlights", []))
+    # Anlatımı GÜVENİLİR şekilde birleştir: hook + 4 kategori 'say' + CTA (LLM 'narration' alanı
+    # bazen kısa kalıyor → 30sn çıkıyordu). Böylece tam 4-kategori içeriği seslenir → 60-88sn.
+    parts = [d.get("hook", "")]
+    for c in d.get("categories", []):
+        if c.get("say"):
+            parts.append(c["say"])
+    composed = " ".join(p.strip() for p in parts if p and p.strip())
+    raw_narr = d.get("narration", "") or ""
+    d["narration"] = composed if len(composed.split()) > len(raw_narr.split()) else raw_narr
+    if not d["narration"].strip():
+        d["narration"] = d.get("hook", "") or destination
     # stok anahtarları: destinasyon + kategori sorguları (birebir eşleşme)
     base = destination.split(",")[0]
     kws = d.get("stock_keywords") or []
