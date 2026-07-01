@@ -406,8 +406,10 @@ def build_broll_video(audio_path: str, output_path: str, clips: List[str],
                         f"fontsize={56 if not vertical else 60}:x=(w-text_w)/2:y={y}:"
                         f"box=1:boxcolor=black@0.55:boxborderw=18:enable='lt(t,6)'")
     vf = ",".join(vf_parts) if vf_parts else "null"
+    # Ses: loudnorm (YouTube -14 LUFS) + güvenli volume → kısık ses sorunu çözülür
     cmd = ["ffmpeg", "-y", "-i", bg, "-i", audio_path,
            "-vf", vf, "-map", "0:v", "-map", "1:a",
+           "-af", "loudnorm=I=-14:TP=-1.5:LRA=11,volume=1.5",
            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "192k", "-shortest", output_path]
     subprocess.run(cmd, capture_output=True, timeout=900)

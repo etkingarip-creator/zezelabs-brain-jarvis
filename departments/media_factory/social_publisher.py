@@ -46,7 +46,7 @@ def platform_configured(platform: str) -> Dict:
 
 
 def publish(platform: str, video_path: str, title: str, description: str, hashtags: list,
-            srt_path: str = "", caption_lang: str = "en") -> Dict:
+            srt_path: str = "", caption_lang: str = "en", channel: str = "") -> Dict:
     """Gerçek yayın (credential varsa). Yoksa dürüstçe 'credential gerekli' döner — SAHTE BAŞARI YOK.
     srt_path: uzun-form YouTube için soft caption (SEO+çeviri) olarak yüklenir."""
     cfg = platform_configured(platform)
@@ -59,7 +59,7 @@ def publish(platform: str, video_path: str, title: str, description: str, hashta
         p = platform.lower()
         if p == "youtube":
             return _youtube_upload(video_path, title, description, hashtags,
-                                   srt_path=srt_path, caption_lang=caption_lang)
+                                   srt_path=srt_path, caption_lang=caption_lang, channel=channel)
         if p == "tiktok":
             return _tiktok_upload(video_path, title, hashtags)
         if p in ("instagram", "ig"):
@@ -73,14 +73,23 @@ _YT_SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
               "https://www.googleapis.com/auth/youtube.force-ssl"]  # force-ssl = caption upload
 
 
+def _channel_token(channel: str = "") -> str:
+    """Her niş = ayrı kanal = ayrı token. channel='travel' → youtube_token_travel.json.
+    Yoksa varsayılan youtube_token.json'a düşer."""
+    if channel:
+        cand = f"youtube_token_{channel}.json"
+        if os.path.exists(cand):
+            return cand
+    return os.getenv("YOUTUBE_TOKEN_PATH", "youtube_token.json")
+
+
 def _youtube_upload(video_path: str, title: str, description: str, tags: list,
-                    srt_path: str = "", caption_lang: str = "en") -> Dict:
-    """YouTube Data API v3 resumable upload + (varsa) SRT soft-caption yükle (SEO+çeviri)."""
+                    srt_path: str = "", caption_lang: str = "en", channel: str = "") -> Dict:
+    """YouTube Data API v3 upload + SRT caption. channel: niş kanalı (ayrı token)."""
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
     from google.oauth2.credentials import Credentials
-    creds = Credentials.from_authorized_user_file(
-        os.getenv("YOUTUBE_TOKEN_PATH", "youtube_token.json"), _YT_SCOPES)
+    creds = Credentials.from_authorized_user_file(_channel_token(channel), _YT_SCOPES)
     yt = build("youtube", "v3", credentials=creds)
     body = {"snippet": {"title": title[:100], "description": description[:4900], "tags": tags[:15]},
             "status": {"privacyStatus": os.getenv("YT_PRIVACY", "private")}}

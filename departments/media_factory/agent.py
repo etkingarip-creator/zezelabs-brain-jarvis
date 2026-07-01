@@ -175,7 +175,7 @@ class MediaFactoryAgent(BaseDepartmentAgent):
             res["social"] = {"youtube": await _aio.to_thread(
                 sp.publish, "youtube", res["path"], res["title"],
                 meta.get("description", ""), meta.get("tags", []),
-                res.get("srt_path", "") or "", "en")}
+                res.get("srt_path", "") or "", "en", "travel")}  # travel kanalı (ayrı token)
         return res
 
     async def publish_to_social(self, video_path: str, topic: str,
