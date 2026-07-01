@@ -33,6 +33,7 @@ const DEPT_CATALOG: DeptCard[] = [
   { id: 'zeze_compliance', floorId: 7, label: 'Uyumluluk', icon: Zap, color: '#fca5a5' },
   { id: 'media_factory', floorId: 5, label: 'Medya', icon: Zap, color: '#fb923c' },
   { id: 'zeze_betting', floorId: 16, label: 'Bahis', icon: Zap, color: '#facc15' },
+  { id: 'zeze_trend', floorId: 1, label: 'Trend', icon: Zap, color: '#f59e0b' },
   { id: 'zeze_academy', floorId: 17, label: 'Akademi', icon: Zap, color: '#818cf8' },
   { id: 'zeze_production', floorId: 3, label: 'Prodüksiyon', icon: Zap, color: '#4ade80' },
 ];
