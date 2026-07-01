@@ -1210,7 +1210,16 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         # Mod 0 — TRAVEL SHORTS (çekirdek niş): harita girişi + 4 kategori + sıfır-tekrar footage +
         # gür ses + kapak + travel-SEO. "travel/seyahat/gezi/destinasyon/<yer> gezisi" → tam otomatik.
         if any(k in desc for k in ["travel", "seyahat", "gezi", "destinasyon", "destination", "trip", "gez "]):
-            dest = task_data.get("destination") or task_data.get("description", "").strip() or topic
+            dest = task_data.get("destination")
+            if not dest:
+                # Doğal cümleden yer adını ayıkla: dolgu kelimelerini at ("Santorini seyahat shortu üret" → "Santorini")
+                import re as _re
+                raw = task_data.get("description", "").strip()
+                fillers = (r"\b(travel|seyahat\w*|gezi\w*|gez|destinasyon\w*|destination|trip|short\w*|"
+                           r"video\w*|reel\w*|klip\w*|tiktok|i[çc]in|hakk[ıi]nda|yap\w*|olu[şs]tur\w*|"
+                           r"[üu]ret\w*|haz[ıi]rla\w*|about|make|create|generate|a|an|the|of|to)\b")
+                dest = _re.sub(fillers, " ", raw, flags=_re.IGNORECASE)
+                dest = _re.sub(r"\s+", " ", dest).strip(" -:,.") or raw or topic
             return await self.produce_travel_short(
                 dest, vertical=not any(k in desc for k in ["uzun", "yatay", "long", "landscape"]),
                 publish=bool(task_data.get("publish", False)))
