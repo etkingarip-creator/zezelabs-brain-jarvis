@@ -290,7 +290,7 @@ def _image_to_clip(img: str, out: str, sec: float, W: int, H: int) -> Optional[s
 def assemble_rich(audio_path: str, output_path: str, keywords: List[str],
                   image_prompts: Optional[List[str]] = None, title: str = "",
                   vertical: bool = False, captions: bool = True,
-                  burn_captions: Optional[bool] = None) -> Dict:
+                  burn_captions: Optional[bool] = None, intro_clip: Optional[str] = None) -> Dict:
     """Tam zengin montaj: b-roll/AI görsel + Whisper altyazı + ses.
     burn_captions: None→dikeyde yak, uzun-formda yakma (SRT üret). Açık verilirse onu uygular.
     Uzun-form için SRT döner (YouTube'a soft caption yüklenir → SEO+çeviri)."""
@@ -318,7 +318,8 @@ def assemble_rich(audio_path: str, output_path: str, keywords: List[str],
         cap = make_captions(audio_path, ass_path=ass_target, srt_path=srt_target, vertical=vertical)
         ass = ass_target if cap.get("ass") else None
         srt = srt_target if cap.get("srt") else None
-    out = build_broll_video(audio_path, output_path, clips, title=title, ass_path=ass, vertical=vertical)
+    out = build_broll_video(audio_path, output_path, clips, title=title, ass_path=ass,
+                            vertical=vertical, intro_clip=intro_clip)
     if out:
         return {"success": True, "path": out, "visual_source": src,
                 "burned_captions": bool(ass), "srt_path": srt, "clip_count": len(clips)}
@@ -327,7 +328,8 @@ def assemble_rich(audio_path: str, output_path: str, keywords: List[str],
 
 def build_broll_video(audio_path: str, output_path: str, clips: List[str],
                       title: str = "", ass_path: Optional[str] = None,
-                      vertical: bool = False, scene_sec: float = 6.0) -> Optional[str]:
+                      vertical: bool = False, scene_sec: float = 6.0,
+                      intro_clip: Optional[str] = None) -> Optional[str]:
     """B-roll sahnelerini ses süresine döngüle, altyazı+başlık yak, NotebookLM sesini kullan."""
     dur = _ffprobe_duration(audio_path)
     if dur <= 0 or not clips:
@@ -393,7 +395,30 @@ def build_broll_video(audio_path: str, output_path: str, clips: List[str],
         subprocess.run(["ffmpeg", "-y", "-i", body, "-t", str(dur), "-c", "copy", bg], capture_output=True, timeout=300)
     if not os.path.exists(bg):
         return None
-    # 3. Altyazı + başlık yak, NotebookLM sesini bindir
+    # 2.5 Harita girişi (varsa) → bg'nin başına ekle, toplam = ses uzunluğu (anlatım intro üstünde çalar)
+    if intro_clip and os.path.exists(intro_clip):
+        intro_dur = min(_ffprobe_duration(intro_clip), 8.0)
+        if intro_dur > 1:
+            intro_n = os.path.join(work, "intro_norm.mp4")
+            subprocess.run(["ffmpeg", "-y", "-i", intro_clip, "-t", str(intro_dur),
+                            "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=30",
+                            "-an", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", intro_n],
+                           capture_output=True, timeout=180)
+            body_trim = os.path.join(work, "body_trim.mp4")
+            subprocess.run(["ffmpeg", "-y", "-i", bg, "-t", str(max(1.0, dur - intro_dur)),
+                            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", body_trim],
+                           capture_output=True, timeout=300)
+            il = os.path.join(work, "introcat.txt")
+            with open(il, "w", encoding="utf-8") as f:
+                f.write(f"file '{os.path.abspath(intro_n)}'\nfile '{os.path.abspath(body_trim)}'\n")
+            merged = os.path.join(work, "with_intro.mp4")
+            subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", il,
+                            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", merged],
+                           capture_output=True, timeout=300)
+            if os.path.exists(merged) and os.path.getsize(merged) > 5000:
+                bg = merged
+
+    # 3. Altyazı + başlık yak, ses bindir
     vf_parts = []
     if ass_path and os.path.exists(ass_path):
         ap = ass_path.replace("\\", "/").replace(":", "\\:")

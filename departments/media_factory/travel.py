@@ -24,15 +24,19 @@ TRAVEL_AFFILIATES = [
 
 async def generate_travel_script(ask_llm, destination: str, lang: str = "en",
                                  highlights: int = 5) -> Dict:
-    """Destinasyon → hook + öne çıkan noktalar + anlatım + her nokta için stok arama terimi."""
+    """Destinasyon → hook + 4 KATEGORİ (görülecek yerler/enteresan bilgi/ulaşım/konaklama) +
+    170-210 kelime (60-88sn) + her kategori için stok arama terimi + affiliate köprüsü."""
     prompt = (
-        f"Create a punchy {lang} script for a 60-90s vertical travel short about: {destination}.\n"
-        f"Structure: a 1-line HOOK (stop the scroll), then {highlights} must-see highlights. "
-        f"Each highlight: one vivid spoken sentence + a specific stock-footage search phrase "
-        f"(include the place name so real footage matches). Keep total ~120-160 words (slow-ish).\n"
-        f"Also give a catchy youtube_title and a short thumbnail_hook (<=4 words).\n"
-        f'ONLY JSON: {{"hook":"","title":"","thumbnail_hook":"","narration":"full spoken text",'
-        f'"highlights":[{{"say":"","stock_query":""}}],"stock_keywords":["destination-based search phrases"]}}'
+        f"Write a punchy {lang} script for a 60-88 SECOND vertical travel short about: {destination}.\n"
+        f"TOTAL 170-210 words (this controls the 60-88s length — stay in range).\n"
+        f"Structure EXACTLY: 1-line HOOK, then 4 categories, each 2-3 vivid spoken sentences:\n"
+        f"1) MUST-SEE spots (top places), 2) INTERESTING facts (surprising), "
+        f"3) GETTING THERE / getting around (transport), 4) WHERE TO STAY (accommodation), then a 1-line CTA.\n"
+        f"Each category: also give a stock-footage search phrase INCLUDING the place name (real footage match).\n"
+        f"Also: catchy youtube_title, short thumbnail_hook (<=3 words).\n"
+        f'ONLY JSON: {{"hook":"","title":"","thumbnail_hook":"","narration":"full spoken text 170-210 words",'
+        f'"categories":[{{"name":"must_see|facts|transport|stay","say":"","stock_query":""}}],'
+        f'"stock_keywords":["destination-based phrases per category"]}}'
     )
     resp = await ask_llm(prompt=prompt, system_prompt="You are a viral travel content writer. Vivid, concise, specific. Output ONLY valid JSON.")
     try:
@@ -47,15 +51,16 @@ async def generate_travel_script(ask_llm, destination: str, lang: str = "en",
     d.setdefault("title", f"{destination} — Top Places You Must See")
     d.setdefault("thumbnail_hook", destination.split(",")[0][:20])
     d.setdefault("narration", d.get("hook", ""))
-    d.setdefault("highlights", [])
-    # stok anahtarları: destinasyon + highlight sorguları (birebir eşleşme)
+    d.setdefault("categories", d.get("highlights", []))
+    # stok anahtarları: destinasyon + kategori sorguları (birebir eşleşme)
     base = destination.split(",")[0]
     kws = d.get("stock_keywords") or []
-    for h in d.get("highlights", []):
+    for h in d.get("categories", []):
         q = h.get("stock_query")
         if q:
             kws.append(q)
-    if not kws:
-        kws = [f"{base} aerial", f"{base} street", f"{base} landmark", f"{base} nature", f"{base} sunset"]
+    if not kws:  # 4 kategoriye uygun varsayılan aramalar
+        kws = [f"{base} landmark", f"{base} aerial city", f"{base} street food",
+               f"{base} transport road", f"{base} hotel resort", f"{base} sunset nature"]
     d["stock_keywords"] = kws[:8]
     return d

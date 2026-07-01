@@ -142,10 +142,15 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         audio = _os.path.join(rep, f"{base}.mp3")
         if not await _aio.to_thread(kokoro_engine.synth, sc["narration"], audio, "en", "af_heart", 1.0):
             return {"success": False, "error": "Kokoro ses üretilemedi (server 8003?)"}
-        # 3. Eşleşen gerçek stok footage + montaj (dikey=yakılı altyazı)
+        # 2.5 Harita-zoom girişi (uzaydan konuma iniş, OSM ücretsiz) — anlatım üstünde çalar
+        from departments.media_factory.map_animation import build_map_intro
+        intro = _os.path.join(rep, f"{base}_map.mp4")
+        mi = await _aio.to_thread(build_map_intro, destination, intro, vertical, 7.0)
+        intro_clip = mi.get("path") if mi and mi.get("success") else None
+        # 3. Eşleşen gerçek stok footage + montaj (dikey=yakılı altyazı) + harita girişi
         out = _os.path.join(rep, f"{base}.mp4")
         res = await _aio.to_thread(assemble_rich, audio, out, sc["stock_keywords"], None,
-                                   sc.get("thumbnail_hook", destination), vertical, True)
+                                   sc.get("thumbnail_hook", destination), vertical, True, None, intro_clip)
         if not res.get("success"):
             return {"success": False, "stage": "montaj", **res}
         # 4. Kapak — KISA hook (uzun cümle DEĞİL). Dikey→tam-ekran; yatay→split.
