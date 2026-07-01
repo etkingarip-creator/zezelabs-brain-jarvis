@@ -62,6 +62,19 @@ async def generate_travel_script(ask_llm, destination: str, lang: str = "en",
     d["narration"] = composed if len(composed.split()) > len(raw_narr.split()) else raw_narr
     if not d["narration"].strip():
         d["narration"] = d.get("hook", "") or destination
+    # Süre garantisi: 60-88sn için ~180-210 kelime gerekir. Kısaysa TEK genişletme çağrısı.
+    if len(d["narration"].split()) < 165:
+        try:
+            exp = await ask_llm(
+                prompt=(f"Expand this {destination} travel-short narration to 190-210 words. Keep the 4 sections "
+                        f"(must-see, interesting facts, transport, accommodation), add vivid specific detail, "
+                        f"natural spoken flow, no headings. Return ONLY the narration text:\n\n{d['narration']}"),
+                system_prompt="You are a travel scriptwriter. Return only the expanded spoken narration.")
+            exp = (exp or "").strip()
+            if len(exp.split()) > len(d["narration"].split()):
+                d["narration"] = exp
+        except Exception:
+            pass
     # stok anahtarları: destinasyon + kategori sorguları (birebir eşleşme)
     base = destination.split(",")[0]
     kws = d.get("stock_keywords") or []
