@@ -255,6 +255,17 @@ def _write_ass(segments, ass_path: str, vertical: bool = False, max_words: int =
             h = int(sec // 3600); m = int((sec % 3600) // 60); s = sec % 60
             return f"{h:d}:{m:02d}:{s:05.2f}"
 
+        # KİNETİK: her grup pop-in (fade + scale 118→100) + en uzun kelime SARI vurgu (hareketli his)
+        POP = r"{\fad(90,50)\t(0,130,\fscx118\fscy118)\t(130,260,\fscx100\fscy100)}"
+
+        def _kinetic(group):
+            ws = [w[2] for w in group]
+            key = max(range(len(ws)), key=lambda i: len(ws[i])) if ws else -1
+            parts = []
+            for i, w in enumerate(ws):
+                parts.append(r"{\c&H00FFFF&}" + w + r"{\c&HFFFFFF&}" if i == key and len(w) > 3 else w)
+            return POP + " ".join(parts).replace("\n", " ")
+
         buf = []
         for seg in segments:
             words = getattr(seg, "words", None) or []
@@ -262,13 +273,11 @@ def _write_ass(segments, ass_path: str, vertical: bool = False, max_words: int =
                 buf.append((wd.start, wd.end, wd.word.strip()))
                 if len(buf) >= max_words:
                     st, en = buf[0][0], buf[-1][1]
-                    txt = " ".join(w[2] for w in buf).replace("\n", " ")
-                    lines.append(f"Dialogue: 0,{t(st)},{t(en)},Cap,,0,0,0,,{txt}")
+                    lines.append(f"Dialogue: 0,{t(st)},{t(en)},Cap,,0,0,0,,{_kinetic(buf)}")
                     buf = []
         if buf:
             st, en = buf[0][0], buf[-1][1]
-            txt = " ".join(w[2] for w in buf)
-            lines.append(f"Dialogue: 0,{t(st)},{t(en)},Cap,,0,0,0,,{txt}")
+            lines.append(f"Dialogue: 0,{t(st)},{t(en)},Cap,,0,0,0,,{_kinetic(buf)}")
         with open(ass_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
         return True

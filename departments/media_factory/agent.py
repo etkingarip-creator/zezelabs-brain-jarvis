@@ -140,7 +140,8 @@ class MediaFactoryAgent(BaseDepartmentAgent):
         sc = await travel.generate_travel_script(self.ask_llm, destination, lang="en")
         # 2. Ses (Kokoro, EN)
         audio = _os.path.join(rep, f"{base}.mp3")
-        if not await _aio.to_thread(kokoro_engine.synth, sc["narration"], audio, "en", "af_heart", 1.0):
+        # Daha canlı ses (af_bella) + hafif enerji temposu. (Gerçek duygu kadranı için Chatterbox planlı.)
+        if not await _aio.to_thread(kokoro_engine.synth, sc["narration"], audio, "en", "af_bella", 1.06):
             return {"success": False, "error": "Kokoro ses üretilemedi (server 8003?)"}
         # 2.5 Harita-zoom girişi (uzaydan konuma iniş, OSM ücretsiz) — anlatım üstünde çalar
         from departments.media_factory.map_animation import build_map_intro
