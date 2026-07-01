@@ -34,12 +34,9 @@ HOLDİNG ANAYASASI:
 2. Her adımda verimliliği ve hızı maksimize et.
 3. Geçmiş hatalardan (Self-Audit) ders çıkar.
 
-DEPARTMAN YETENEKLERİ:
-- zeze_dev: Kod yazımı, sistem mimarisi, hata ayıklama.
-- media_factory: İçerik, tasarım, sosyal medya, video.
-- crypto_trading: Maliyet, risk, kripto, bütçe.
-- zeze_business: Pazar analizi, roadmap, büyük resim.
-- zeze_aro: Satış, pazarlama, müşteri lead yönetimi.
+DEPARTMAN YETENEKLERİ (17 departman — TEK KAYNAK: core.registry.routing):
+""" + __import__("core.registry.routing", fromlist=["departments_brief"]).departments_brief() + """
+NOT: Video/short/seyahat/içerik → media_factory. Grafik/UI/logo → zeze_design (video değil).
 
 PLANLAMA PROTOKOLÜ:
 Önce içinden düşün (Reasoning), sonra planı JSON formatında sun.

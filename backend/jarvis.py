@@ -365,42 +365,12 @@ class JarvisZOMCore:
         return self._conv_get(client_id)
 
     def _route_to_department(self, message: str) -> tuple[str, bool]:
-        """Mesaj içeriğine göre uygun departmanı belirle.
-        Dönen değer: (dept_name, is_direct_match)
-        """
-        import re
-        msg_lower = message.lower()
-        
-        # Keyword-based routing
-        dept_keywords = {
-            "zeze_dev": ["kod", "kod yaz", "geliştir", "program", "git", "commit", "test", "hata", "bug", "feature", "code", "develop", "build", "deploy"],
-            "zeze_design": ["tasarım", "ui", "ux", "görsel", "renk", "font", "tasarla", "design", "mockup", "figma"],
-            "zeze_business": ["iş", "strateji", "pazar", "müşteri", "gelir", "şirket", "business", "strategy", "revenue"],
-            "zeze_comms": ["iletişim", "haber", "duyuru", "medya", "pr", "yazı", "içerik", "communications", "press"],
-            "zeze_compliance": ["uyum", "yasal", "düzenleme", "politika", "izin", "compliance", "legal", "regulatory"],
-            "zeze_ops": ["operasyon", "süreç", "verimlilik", "işlem", "operations", "process", "optimization"],
-            "zeze_production": ["üretim", "içerik", "video", "görüntü", "production", "content", "video", "media"],
-            "zeze_trend": ["trend", "pazar", "analiz", "rekabet", "trend", "market", "analysis", "competitor"],
-            "zeze_rnd": ["araştırma", "r&d", "yenilik", "prototip", "research", "innovation", "prototype", "ai"],
-            "zeze_sec": ["güvenlik", "güvenli", "tarama", "test", "audit", "security", "vulnerability", "penetration"],
-            "zeze_aro": ["analitik", "metrik", "veri", "izleme", "analytics", "metrics", "data", "monitoring"],
-            "app_factory": ["uygulama", "app", "saas", "web", "mobil", "api", "application", "saas", "fastapi"],
-            "crypto_trading": ["kripto", "bitcoin", "trade", "bnb", "ethereum", "crypto", "trading", "binance", "coin", "cüzdan", "bakiye", "varlık"],
-            "media_factory": ["video", "ses", "görüntü", "animasyon", "video", "audio", "animation", "media"],
-            "zeze_game": ["oyun", "game", "gaming", "play", "level", "karakter"],
-            "zeze_betting": ["bahis", "betting", "tahmin", "oran", "tuttur", "kupon"],
-        }
-        
-        for dept, keywords in dept_keywords.items():
-            for keyword in keywords:
-                # Word boundary and prefix match using \b to prevent false positive substring collisions
-                pattern = r'\b' + re.escape(keyword.lower())
-                if re.search(pattern, msg_lower):
-                    logger.info(f"Routing to {dept} (matched keyword: {keyword})")
-                    return dept, True
-        
-        # Default to zeze_business for general queries (no direct keyword match)
-        return "zeze_business", False
+        """Mesaj → departman. TEK KAYNAK: core.registry.routing (skor-tabanlı, 17 departman).
+        Dönen: (dept_name, is_direct_match). Eski parçalı keyword mantığı kaldırıldı."""
+        from core.registry.routing import route
+        dept, score, direct = route(message, default="zeze_business")
+        logger.info(f"Routing to {dept} (score={score:.1f}, direct={direct})")
+        return dept, direct
 
     async def _determine_message_routing(self, message: str, department_override: Optional[str] = None) -> tuple[str, Optional[str], list[str]]:
         """
