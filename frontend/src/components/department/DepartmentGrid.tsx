@@ -694,6 +694,38 @@ export default function DepartmentGrid({ departments, onSelect, selectedId, onQu
                   </span>
                   <span>KUYRUK: <strong style={{ color: queueDepth > 0 ? '#fbbf24' : '#e8ecf4' }}>{queueDepth}</strong></span>
                 </div>
+
+                {/* Quick Launch (tüm departmanlarda) — doğrudan o departmanın execute'ine */}
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    const text = quickCmds[dept.id];
+                    if (!text?.trim()) return;
+                    setQuickCmds(prev => ({ ...prev, [dept.id]: '' }));
+                    try {
+                      await fetch(`${API_BASE}/api/departments/${dept.id}/execute`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ description: text }),
+                      });
+                    } catch { /* offline */ }
+                    onQuickLaunch?.(`[${dept.label}] ${text}`, false);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="mt-2 flex gap-1.5 items-center w-full relative z-10"
+                  style={{ background: 'rgba(10,14,26,0.6)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: '8px', padding: '3px 3px 3px 8px' }}
+                >
+                  <input
+                    type="text"
+                    placeholder={`${dept.label} talimat…`}
+                    value={quickCmds[dept.id] || ''}
+                    onChange={(e) => setQuickCmds(prev => ({ ...prev, [dept.id]: e.target.value }))}
+                    className="text-[11px] bg-transparent border-none outline-none text-[#e8ecf4] placeholder-[#6e7893] flex-1 py-0.5"
+                  />
+                  <button type="submit" disabled={!(quickCmds[dept.id] || '').trim()}
+                    className="shrink-0 p-1 rounded disabled:opacity-30 text-[#58e5c9] hover:bg-slate-800" title="Gönder">
+                    <Zap className="w-3.5 h-3.5" />
+                  </button>
+                </form>
               </div>
             );
           })}
