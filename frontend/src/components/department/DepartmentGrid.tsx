@@ -499,39 +499,42 @@ export default function DepartmentGrid({ departments, onSelect, selectedId, onQu
                         {queueDepth}
                       </span>
                     </div>
-                    <div className="flex flex-col">
-                      <span 
-                        className="mono" 
+                    <div className="flex flex-col min-w-0">
+                      <span
+                        className="mono"
                         style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', color: '#6e7893' }}
                       >
-                        ÇALIŞMA
+                        DURUM
                       </span>
-                      <span 
+                      <span
                         className="mono font-semibold truncate"
-                        style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.82rem', color: '#e8ecf4' }}
-                        title={data?.uptime || '—'}
+                        style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.82rem',
+                                 color: data?.activity === 'working' ? '#34d399' : (data?.activity === 'queued' ? '#fbbf24' : '#6e7893') }}
+                        title={data?.current_task || (data?.activity ?? 'boşta')}
                       >
-                        {data?.uptime || '—'}
+                        {data?.activity === 'working' ? (data?.current_task ? '▶ ' + data.current_task : '▶ çalışıyor')
+                          : data?.activity === 'queued' ? '⏳ kuyrukta' : '● boşta'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Quick Launch Command Bar */}
+                  {/* Quick Launch — DOĞRUDAN o departmanın execute endpoint'ine (garantili routing) */}
                   <form
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       const text = quickCmds[dept.id];
                       if (!text?.trim()) return;
-
-                      let prefix = '';
-                      if (dept.id === 'zeze_dev') prefix = 'Geliştirme: ';
-                      else if (dept.id === 'crypto_trading') prefix = 'Kripto: ';
-                      else if (dept.id === 'zeze_design') prefix = 'Tasarım: ';
-                      else if (dept.id === 'zeze_sec') prefix = 'Güvenlik: ';
-
-                      onQuickLaunch?.(`${prefix}${text}`, true);
                       setQuickCmds(prev => ({ ...prev, [dept.id]: '' }));
+                      try {
+                        // Router'ı atla → görev KESİN bu departmana gider
+                        await fetch(`${API_BASE}/api/departments/${dept.id}/execute`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ description: text }),
+                        });
+                      } catch { /* offline */ }
+                      onQuickLaunch?.(`[${dept.label}] ${text}`, false);  // sohbete iz düş (bilgi)
                     }}
                     onClick={(e) => e.stopPropagation()}
                     className="mt-1 flex gap-2 items-center w-full"
@@ -685,7 +688,10 @@ export default function DepartmentGrid({ departments, onSelect, selectedId, onQu
                   className="flex justify-between items-center relative z-10 w-full mt-1 mono border-t border-white/5 pt-1.5"
                   style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', color: '#6e7893' }}
                 >
-                  <span>AJAN: <strong style={{ color: '#e8ecf4' }}>{activeAgents}</strong></span>
+                  <span title={data?.current_task || (data?.activity ?? 'boşta')}
+                        style={{ color: data?.activity === 'working' ? '#34d399' : (data?.activity === 'queued' ? '#fbbf24' : '#6e7893') }}>
+                    {data?.activity === 'working' ? '▶ çalışıyor' : data?.activity === 'queued' ? '⏳ kuyruk' : '● boşta'}
+                  </span>
                   <span>KUYRUK: <strong style={{ color: queueDepth > 0 ? '#fbbf24' : '#e8ecf4' }}>{queueDepth}</strong></span>
                 </div>
               </div>

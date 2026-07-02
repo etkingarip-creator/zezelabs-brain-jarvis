@@ -757,12 +757,31 @@ class JarvisZOMCore:
                     )
                 ]
                 
+                # GERÇEK canlı durum: queue/çalışan/son-aktif task_history'den (uydurma yok)
+                queued = [t for t in dept_tasks if t.get("status") == "queued"]
+                running = [t for t in dept_tasks if t.get("status") in ("running", "in_progress", "working")]
+                done = [t for t in dept_tasks if t.get("status") in ("success", "failed", "error")]
+                current_task = None
+                if running:
+                    current_task = (running[-1].get("description") or running[-1].get("task") or "")[:80]
+                last_active = None
+                if dept_tasks:
+                    ts = [t.get("finished_at") or t.get("started_at") or t.get("timestamp") for t in dept_tasks]
+                    ts = [x for x in ts if x]
+                    if ts:
+                        last_active = str(max(ts))
+                activity = "working" if running else ("queued" if queued else "idle")
+
                 departments[name] = {
-                    "status": "healthy" if agent else "unknown",
-                    "uptime": uptime_str,
+                    "status": "healthy" if agent else "offline",   # onlineCnt için (agent yüklü mü)
+                    "activity": activity,                          # canlı: working/queued/idle
+                    "current_task": current_task,                  # şu an ne yapıyor (canlı)
+                    "uptime": uptime_str,                          # sistem hazır-süresi
+                    "last_active": last_active,
                     "api_calls": api_calls,
+                    "completed": len(done),
                     "success_rate": success_rate,
-                    "queue_depth": 0,
+                    "queue_depth": len(queued) + len(running),     # GERÇEK kuyruk (uydurma 0 değil)
                     "system_usage": {"cpu": cpu_usage, "ram": ram_usage, "gpu": "0%"},
                     "active_agents": 1 if agent else 0,
                     "agents_list": [],
